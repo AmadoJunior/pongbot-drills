@@ -65,7 +65,7 @@ export const FIELDS = {
   drop: { min: -10, max: 10, step: 1 },
   speed: { min: 0, max: 10, step: 0.5 },
   spin: { min: 0, max: 10, step: 0.5 },
-  freq: { min: 0, max: 100, step: 10 },
+  freq: { min: 0, max: 100, step: 1 },
   reps: { min: 1, max: 200, step: 1 },
 };
 

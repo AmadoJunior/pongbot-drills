@@ -111,7 +111,8 @@ export function render(view, ctx) {
       },
     }),
     spinRow,
-    row('freq', 'Freq.', { opts: { format: v => `${v}` } }),
+    // Nova: 30 + 0.6·freq balls per minute (official app). The Halo's rate is unverified, so it shows the raw value.
+    row('freq', 'Freq.', { opts: { format: v => (dev.id === 'nova' ? `${v} · ${Math.round(30 + 0.6 * v)}/min` : `${v}`) } }),
     row('reps', 'Number of Repetition'),
   );
   const freqHint = document.createElement('div');
