@@ -207,3 +207,4 @@ input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--primary
 .halo-pos button.on { border-color: var(--primary); }
 .halo-pos img { width: 100%; display: block; }
 .halo-pos b { display: block; margin: 4px 4px 0; }
+.timing-row { padding: 10px 0; border-top: 1px solid var(--line); margin-top: 10px; font-size: 14px; }

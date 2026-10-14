@@ -7,6 +7,7 @@ import { CMD, MODE, STATE, drillPacket, packBall } from './core/protocol.js';
 import { drillHasVariation, nextBatch, MAX_BALLS } from './core/scheduler.js';
 import { rollBall } from './core/variation.js';
 import { deviceOf } from './core/devices.js';
+import * as timing from './core/timing.js';
 
 export class Runner extends EventTarget {
   constructor(robot) {
@@ -46,7 +47,7 @@ export class Runner extends EventTarget {
       timeTotalMs: timed ? plan.minutes * 60000 : 0,
       cyclesDone: 0, elapsedMs: 0, resumedAt: Date.now(), paused: false,
       varied: drillHasVariation(plan), entries: [], batchCycles: 0, pending: [],
-      shot: null, shotCount: 0, waiting: true,
+      shot: null, shotCount: 0, waiting: true, timing: timing.newTiming(), batchNo: 0,
     };
     this.session.tick = setInterval(() => this.#tick(), 250);
     if (!deferred) this.begin();
@@ -58,6 +59,7 @@ export class Runner extends EventTarget {
     if (!s?.waiting) return;
     s.waiting = false;
     s.resumedAt = Date.now();
+    s.timing = timing.newTiming(s.resumedAt);
     if (s.varied) this.#sendBatch();
     else this.#sendNative();
     this.#emit();
@@ -68,6 +70,7 @@ export class Runner extends EventTarget {
     if (!s || s.paused || s.waiting) return;
     s.elapsedMs += Date.now() - s.resumedAt;
     s.paused = true;
+    timing.onPause(s.timing);
     this.robot.send(CMD.pause);
     this.#emit();
   }
@@ -112,11 +115,13 @@ export class Runner extends EventTarget {
     s.pending = batch.rest;
     const d = s.drill;
     this.robot.send(drillPacket(batch.entries.map(e => packBall(e.shot, e.reps, d.device, d.position)), MODE.groups, 1, false));
+    timing.onBatchSent(s.timing, Date.now(), s.batchNo++ === 0);
   }
 
   #onMessage(msg) {
     const s = this.session;
     if (!s) return;
+    if (!s.waiting) timing.onMessage(s.timing, msg);
     if (msg.type === 'drillAck' && !msg.ok) {
       this.#finish('rejected');
     } else if (msg.type === 'progress') {
@@ -129,6 +134,7 @@ export class Runner extends EventTarget {
       this.#emit();
     } else if (msg.type === 'status' && msg.state === STATE.complete) {
       if (!s.varied) return this.#finish('done');
+      timing.onComplete(s.timing);
       s.cyclesDone += s.batchCycles;
       const timeUp = s.timed && this.elapsed() >= s.timeTotalMs;
       if (!s.pending.length && (timeUp || s.cyclesDone >= s.cyclesTotal)) return this.#finish('done');
@@ -152,6 +158,13 @@ export class Runner extends EventTarget {
     if (!s) return;
     clearInterval(s.tick);
     this.session = null;
+    if (s.timing.log.some(m => m.type === 'progress')) {
+      timing.saveTimingSession({
+        at: new Date().toISOString(), device: s.drill.device, robot: this.robot.name ?? null,
+        drill: s.drill.name, kind: s.kind, varied: s.varied, reason,
+        summary: timing.summarize(s.timing), gaps: s.timing.gaps, log: s.timing.log,
+      });
+    }
     this.dispatchEvent(new CustomEvent('finish', { detail: { reason, drill: s.drill, kind: s.kind } }));
     this.#emit();
   }

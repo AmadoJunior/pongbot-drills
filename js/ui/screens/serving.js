@@ -2,6 +2,7 @@
 import { store } from '../../store.js';
 import { $, esc, fmt, confirmDialog, toast } from '../dom.js';
 import { drawTopView, traceBall, ballColor } from '../trajectory.js';
+import { summarize } from '../../core/timing.js';
 
 const RING = 2 * Math.PI * 100;
 const mmss = ms => {
@@ -28,6 +29,7 @@ export function render(view, ctx) {
         <div class="center"><div class="big" id="big">–</div><div class="sub" id="sub"></div></div>
       </div>
       <div class="shot-info" id="shot"></div>
+      ${s0.varied ? '<div class="hint" id="gap" style="text-align:center"></div>' : ''}
       <div class="card"><div class="traj" style="justify-content:center"><canvas class="top"></canvas></div></div>
     </div>
     <div class="bottom-bar">
@@ -85,6 +87,15 @@ export function render(view, ctx) {
     }
     fg.setAttribute('stroke-dashoffset', String(RING * (1 - Math.min(1, frac))));
     $('#pause', view).textContent = s.paused ? 'Continue' : 'Pause';
+    const gapEl = $('#gap', view);
+    if (gapEl) {
+      const t = summarize(s.timing);
+      const sec = ms => `${(ms / 1000).toFixed(2)} s`;
+      gapEl.textContent = t.lastGapMs == null
+        ? 'Batch gap: measured when the next batch starts'
+        : `Batch gap ${sec(t.lastGapMs)} · normal spacing ${t.spacingMs == null ? '–' : sec(t.spacingMs)}`
+          + (t.batches > 1 ? ` · avg ${sec(t.gapMs)} over ${t.batches}` : '');
+    }
     if (s.shot && s.shot !== lastShot) {
       lastShot = s.shot;
       const sh = s.shot.shot;

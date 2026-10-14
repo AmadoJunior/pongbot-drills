@@ -85,7 +85,11 @@ drill made for the other model.
   combos as fit go into one upload. The next batch is uploaded when the robot
   reports the current one complete, so there may be a pause between batches.
   **Not yet measured on a robot:** the pause length, and whether the robot
-  accepts more than 20 balls per upload (20 is a cautious guess).
+  accepts more than 20 balls per upload (20 Nova balls is 487 bytes, just
+  under Web Bluetooth's 512-byte limit for one write).
+- **Measuring it:** during a drill with ranges, the serving screen shows the
+  last batch gap next to the normal shot spacing. Settings → Shot timing keeps
+  the last 10 sessions, with Copy log / Save log for the raw robot messages.
 
 ## Importing existing drills
 
@@ -99,7 +103,7 @@ drill made for the other model.
 
 ## Development
 
-- `node --test tests/core.test.mjs tests/halo.test.mjs tests/pwa.test.mjs` runs the unit tests
+- `node --test tests/*.test.mjs` runs the unit tests
   (Nova and Halo physics, framing, variation, scheduler, protocol, import and
   the offline file list).
 - No build step. The app is plain ES modules.
