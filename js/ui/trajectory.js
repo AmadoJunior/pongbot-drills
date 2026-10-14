@@ -188,11 +188,14 @@ export function drawTopView(canvas, { drill, items = [], cssW = 150, showGrid = 
 
 export function drawSideView(canvas, { drill, items = [], cssW = 200, cssH = 110 }) {
   const Y0 = drill.device === 'halo' ? -1.9 : -1.6, Y1 = 1.75;
-  let zMax = 0.55;
+  let zMax = 0;
   for (const it of items) for (const p of it.trace.base.points) zMax = Math.max(zMax, p[3] + 0.05);
-  zMax = Math.min(zMax, 1.6);
+  zMax = Math.min(Math.max(zMax, 0.3), 1.6);
   const pad = 10;
-  const sx = (cssW - 2 * pad) / (Y1 - Y0), sz = (cssH - 2 * pad) / zMax;
+  // Heights are drawn at most 2x the horizontal scale. Filling the box instead
+  // stretched them 3-4x and made every flat ball look like a loop.
+  const MAX_Z_STRETCH = 2;
+  const sx = (cssW - 2 * pad) / (Y1 - Y0), sz = Math.min(MAX_Z_STRETCH * sx, (cssH - 2 * pad) / zMax);
   const ctx = setup(canvas, cssW, cssH);
   const map = p => [pad + (p[2] - Y0) * sx, cssH - pad - p[3] * sz];
   const mapYZ = (y, z) => [pad + (y - Y0) * sx, cssH - pad - z * sz];
