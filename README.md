@@ -82,8 +82,10 @@ drill made for the other model.
   itself, exactly like the official app.
 - **Drills with ranges** are sent in batches of up to 20 shots. Each repetition
   of a varied ball becomes its own shot with fresh values, and as many whole
-  combos as fit go into one upload. There is a short pause when one batch ends
-  and the next is uploaded, about once every 20 balls.
+  combos as fit go into one upload. The next batch is uploaded when the robot
+  reports the current one complete, so there may be a pause between batches.
+  **Not yet measured on a robot:** the pause length, and whether the robot
+  accepts more than 20 balls per upload (20 is a cautious guess).
 
 ## Importing existing drills
 
