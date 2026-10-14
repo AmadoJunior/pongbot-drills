@@ -1,95 +1,96 @@
-# Nova S Pro Drill Control
+# Nova+ Custom Drills
 
-A pretty web client for the Nova S Pro table tennis robot. 
-This tool can be used as a replacement for the original app, removing the requirements for server connectivity and user login.
+A personal controller for the Pongbot **Nova S Pro** and **Halo S Pro**. It
+rebuilds the official app's **Custom Drills** section and adds **per-shot
+variation**: a ± range on speed, spin, ball height and drop point (and rail
+position on the Halo), rolled again for every single shot while the ball order
+stays fixed.
 
-| Main | Editor | Countdown |
-| :---: | :---: | :---: |
-| <img src="./images/main.png" width="300"> | <img src="./images/editor.png" width="300"> | <img src="./images/countdown.png" width="300"> |
+Built on [olanga/nova](https://github.com/olanga/nova) (the original app is on
+the `main` branch). Protocol details, parameter conversion and ball physics are
+taken from the official app; see `../re/FINDINGS.md`.
 
-## Usage
+## Run it
 
-**Online/Offline:**
+Web Bluetooth needs Chrome or Edge (Android, Windows, macOS, Linux; not iPhone)
+and a secure origin:
 
-  * Visit: [https://olanga.github.io/nova/](https://olanga.github.io/nova/)
-  * Self hosting: https is required
+- **On this PC:** `python tools/serve.py`, then open <http://localhost:8000>.
+  This server turns off browser caching, so a normal reload picks up code
+  changes. With plain `python -m http.server`, Chrome can keep running old
+  code; press Ctrl+Shift+R after updates.
+- **On your phone at the table:** host the folder on HTTPS, for example GitHub
+  Pages, and open it in Chrome.
+- **Without the robot:** add `?mock` (simulated Nova) or `?mock=halo`
+  (simulated Halo) to the URL, for example `http://localhost:8000/?mock=halo`.
 
-**Local:**
+Drills live in the browser's local storage. Use ··· → Export to back them up.
 
-  * Download repository files and host locally (e.g., `python3 -m http.server`).
+## Nova vs Halo
 
-**Docker:**
+The switch at the top of the drill list picks the robot. When you connect, the
+app switches to the connected robot's model automatically, and it won't start a
+drill made for the other model.
 
-  * visit https://github.com/elton-bt/nova
+| | Nova S Pro | Halo S Pro |
+| --- | --- | --- |
+| Positions | 1–9, Standard, Near-Net, plus robot angle on the table | 1 (behind the end line), 2 / 3 (beside the net) |
+| Spin direction | 8 directions on the dial; the head is turned by hand, so a drill uses the two directions of one head position | any angle on the dial, set per ball; the head turns by itself |
+| Extra | – | Rail position, with its own ± range |
 
-**Requirements:**
+## Flow (same as the official app)
 
-  * Chrome, Cromite or any other Chromium-based browser. iPhone is not supported as it uses Webkit browser engine.
+1. **Custom Drills → Mine.** Tap a drill to open Drill Prep. Press and hold to
+   select drills for delete or duplicate. Tap Add New to create one.
+2. **Select Robot Position.** Choose 1–9, Standard or Near-Net. Orange dots
+   show the drop-point coverage from that spot.
+3. **Combo Rotation Type** (Nova only). Choose the manual head position.
+   Each ball then picks one of its two spin directions.
+4. **Edit Combo.**
+   - Set the title and the list of balls.
+   - Tap a ball to preview it. Press and hold, or tap ✎, to edit it.
+   - Drag ☰ to reorder. Drag a ball to the bottom of the screen to delete it.
+   - Combo Test serves the combo twice.
+5. **Ball settings.** Set Ball Height, Rotation Type (circular dial), Drop
+   Point, Rail (Halo), Speed, Spin, Freq. and Number of Repetition, with live
+   top and side ball prediction.
+   - Tap **±** on Speed, Spin, Ball Height or Drop Point to set a random
+     range. The preview shows the spread and the share of varied shots that
+     land.
+   - Ball Test serves the ball five times, each shot with its own roll.
+6. **Drill Prep.** Choose the serve mode (number of combos, or minutes) and
+   Sequential or Random order, then Start.
+   - The serving screen shows the values of the shot just fired.
 
-## Features
+## How variation is sent
 
-**General**
+- **Drills without ± ranges** are uploaded once, and the robot loops them
+  itself, exactly like the official app.
+- **Drills with ranges** are sent in batches of up to 20 shots. Each repetition
+  of a varied ball becomes its own shot with fresh values, and as many whole
+  combos as fit go into one upload. There is a short pause when one batch ends
+  and the next is uploaded, about once every 20 balls.
 
-  * **Fully customizable drills** Add and remove drills and balls. Share, export and import settings.
-  * **Data Persistence:** Settings and drills saved to browser local storage.
-  * **Themes:** 4 options, including dark mode.
-  * **Stratistics:**  accumulated counters (total balls/drills).<br>
+## Importing existing drills
 
+- **Official app:** run `python tools/import_official.py` and log in with your
+  Pongbot account. It writes `official_drills.json` with your Nova and Halo
+  drills; import that file in the app. It keeps the raw server responses in
+  `official_raw/`.
+- **olanga/nova CSV:** import the CSV directly. Variants of a ball are merged
+  into one ball with ± ranges that cover them.
+- **Nova+ backup JSON:** import it directly.
 
-**Drill Management**
+## Development
 
-  * **Edit & Create:** Modify pre-programmed drills or create custom ones (Groups A, B, C).
-  * **Sharing:** Import/export via CSV or share online specific drills using codes.
-  * **Randomization:** Randomize ball sequences or configure multiple variants of a single ball.
-  * **Scatter:** Randomize drop point (DP) of a single ball. Configured DP +/- scatter value.
-  * **Drag-and-Drop Management:** Easily reorder drill sequences or move drills between categories using drag-and-drop.
-  * **Controls:** Set drill duration (time or repetitions), pause/stop, and countdown timers.
-  * **Tap to skip:** Starting countdown timer can be skipped by tapping on it.<br>
+- `node --test tests/core.test.mjs tests/halo.test.mjs` runs the unit tests
+  (Nova and Halo physics, framing, variation, scheduler, protocol and import).
+- No build step. The app is plain ES modules.
 
+## Credits
 
-**Editor Tools**
-
-  * **Drill Editor:** Long-press drill button to access. Supports deletion, "save as", and testing entire sequences.
-  * **Ball Editor:** Add/remove balls, adjust sequence, rename drills, and test single balls without saving.
-
-## Custom Drills (CSV)
-
-Drills can be imported via CSV. Each category (A, B, C) holds 100 drills; each drill holds 20 balls. Variant balls (pseudo-randomness) share the same ball number.
-
-**CSV Format:** `Set;Ball;Name;Speed;Spin;Type;Height;Drop;BPM;Reps`
-
-**Example:**
-
-```csv
-A;1;Drill A2;7.5;5;top;50;-5;60;1
-A;2;Drill A2;7.5;5;back;50;-5;30;1
-B;1;Drill B1;7.5;5;top;50;-5;60;1
-B;1;Drill B1;7.5;5;back;50;5;60;1
-```
-
-## Technical Parameters
-
-| Parameter | Description | Range | Step |
-| :--- | :--- | :--- | :--- |
-| **Spin type** |top/back | - | - |
-| **Speed** | ball speed | 0 - 10 | 0.5 |
-| **Spin** | ball spin | 0 - 10 | 0.5 |
-| **Height** | Ball height | -50 (down) to 100 (up) | 1 |
-| **Drop** | Drop point | -10 (right) to 10 (left) | 0.5 |
-| **bpm** | balls/minute | 30 - 90 | 1 |
-| **Reps** | Repetitions | 1 - 200 | 1 |
-
-
-## Credits & Support
-
-Additional informations: [Wiki](https://github.com/olanga/nova/wiki/General-information)
-
-Spinsight measurements: [Wiki](https://github.com/olanga/nova/wiki/Spinsight-measurements-with-Nova-S-Pro)
-
-Based on findings by [smee](https://github.com/smee/nova-s-custom-drills) and plunder.
-
-PWA version 2.3a created by [Griizly](https://griizly.github.io/nova/)
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E1E21PUFEQ)
-
-
+- Based on [olanga/nova](https://github.com/olanga/nova).
+- Numbers use the Bai Jamjuree font (Cadson Demak), licensed under the SIL Open
+  Font License 1.1.
+- All images are drawn for this app. No artwork from the official app is
+  included.

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 460">
+  <rect x="108" y="90" width="490" height="270" fill="#1b1c1e" stroke="#d6d9dd" stroke-width="4"/>
+  <line x1="108" y1="225" x2="598" y2="225" stroke="#cfd3d8" stroke-width="2"/>
+  <line x1="352" y1="56" x2="352" y2="394" stroke="#2a2c30" stroke-width="7" stroke-linecap="round"/>
+  <line x1="352" y1="90" x2="352" y2="360" stroke="#8a8f96" stroke-width="2"/>
+  <rect x="604" y="90" width="86" height="270" rx="10" fill="#e1e3e8"/>
+  <circle cx="647" cy="196" r="13" fill="none" stroke="#636F87" stroke-width="3"/>
+  <path d="M 625 230 Q 647 206 669 230" fill="none" stroke="#636F87" stroke-width="3" stroke-linecap="round"/>
+  <text x="647" y="278" font-family="sans-serif" font-size="30" fill="#636F87" text-anchor="middle">Me</text>
+  <g transform="translate(56 225) rotate(0)">
+    <rect x="-46" y="-34" width="92" height="68" rx="16" fill="#1d1f23" stroke="#3b3f46" stroke-width="2"/>
+    <rect x="-30" y="-22" width="44" height="44" rx="10" fill="#2c3036"/>
+    <path d="M 20 -24 A 30 30 0 0 1 20 24" fill="none" stroke="#F4643C" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
