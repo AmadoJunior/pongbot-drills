@@ -130,3 +130,6 @@ $('#btn-conn').addEventListener('click', async () => {
 if (robot instanceof MockRobot) document.title += ' (simulator)';
 updateConn();
 render();
+
+// Offline support and "Add to Home screen" (see sw.js).
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

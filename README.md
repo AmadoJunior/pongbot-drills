@@ -26,6 +26,20 @@ and a secure origin:
 
 Drills live in the browser's local storage. Use ··· → Export to back them up.
 
+### Install on your phone
+
+The app is a PWA. Open it in Chrome on Android and choose ⋮ → **Install app**
+(or Add to Home screen). It then opens full screen from its own icon.
+
+- **Works offline:** after one visit with internet, it opens without a
+  connection. The robot connects over Bluetooth, so no internet is needed at
+  the table.
+- **Updates:** when online, each launch loads the latest version. If the
+  network is slow (over 3 seconds), the saved copy opens instead, and the new
+  version is used next time.
+- **Adding a file to the app:** list it in `APP_FILES` in `sw.js`.
+  `tests/pwa.test.mjs` fails if one is missing.
+
 ## Nova vs Halo
 
 The switch at the top of the drill list picks the robot. When you connect, the
@@ -83,8 +97,9 @@ drill made for the other model.
 
 ## Development
 
-- `node --test tests/core.test.mjs tests/halo.test.mjs` runs the unit tests
-  (Nova and Halo physics, framing, variation, scheduler, protocol and import).
+- `node --test tests/core.test.mjs tests/halo.test.mjs tests/pwa.test.mjs` runs the unit tests
+  (Nova and Halo physics, framing, variation, scheduler, protocol, import and
+  the offline file list).
 - No build step. The app is plain ES modules.
 
 ## Credits
