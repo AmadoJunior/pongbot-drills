@@ -1,2 +1,4 @@
 official_raw/
 official_drills.json
+__pycache__/
+*.pyc
