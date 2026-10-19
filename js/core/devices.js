@@ -9,7 +9,7 @@ export const DEVICES = {
     manualHead: true,   // spin axis set by turning the head by hand: 2 spin directions per drill
     rail: false,
     fields: FIELDS,
-    variable: ['speed', 'spin', 'height', 'drop'],
+    variable: ['speed', 'spin', 'height', 'drop', 'freq'],
     defaults: p => ({ height: ROBOT_POSITIONS[p]?.height ?? 50, speed: ROBOT_POSITIONS[p]?.speed ?? 3 }),
   },
   halo: {
@@ -18,7 +18,7 @@ export const DEVICES = {
     manualHead: false,  // motorised head roll: any spin direction per ball
     rail: true,
     fields: HALO_FIELDS,
-    variable: ['speed', 'spin', 'height', 'drop', 'rail'],
+    variable: ['speed', 'spin', 'height', 'drop', 'rail', 'freq'],
     defaults: p => (p === 1 ? { height: 20, speed: 4 } : { height: 20, speed: 3 }),
   },
 };

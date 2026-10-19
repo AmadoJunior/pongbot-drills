@@ -5,10 +5,10 @@
 import { FIELDS } from './physics.js';
 import { deviceOf, maxSpinFor } from './devices.js';
 
-export const VARIABLE_FIELDS = ['speed', 'spin', 'height', 'drop', 'rail'];
+export const VARIABLE_FIELDS = ['speed', 'spin', 'height', 'drop', 'rail', 'freq'];
 
 // Largest ± range offered in the editor, per field.
-export const VARY_MAX = { speed: 3, spin: 3, height: 30, drop: 10, rail: 10 };
+export const VARY_MAX = { speed: 3, spin: 3, height: 30, drop: 10, rail: 10, freq: 50 };
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 

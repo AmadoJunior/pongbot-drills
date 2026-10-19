@@ -117,3 +117,14 @@ test('Halo cloud spin (signed ds + roll index ra) imports as spin and compass an
   assert.equal(Math.round(haloToRobot(d.balls[0]).roll), -1);
   assert.equal(Math.round(haloToRobot(d.balls[1]).roll), -4);
 });
+
+test('frequency variation is rolled per shot on both robots, within 0-100', () => {
+  for (const device of ['nova', 'halo']) {
+    const d = newDrill(device === 'halo' ? 1 : 10, 2, device);
+    d.balls = [{ ...newBall(1, 0, device), reps: 60, freq: 95, vary: { speed: 0, spin: 0, height: 0, drop: 0, rail: 0, freq: 10 } }];
+    const freqs = buildCycle(d).map(e => e.shot.freq);
+    assert.equal(freqs.length, 60, `${device}: each repetition becomes its own shot`);
+    assert.ok(new Set(freqs).size > 5, device);
+    for (const f of freqs) assert.ok(f >= 85 && f <= 100 && Number.isInteger(f), `${device}: ${f}`);
+  }
+});

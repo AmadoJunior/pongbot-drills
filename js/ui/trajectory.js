@@ -30,7 +30,8 @@ function seeded(seed) {
 export function traceBall(ball, drill, samples = 40) {
   const base = simulateBall(ball, drill);
   const out = { base, samples: [], landRate: landsOnTable(base) ? 1 : 0 };
-  if (!hasVariation(ball)) return out;
+  // Frequency only changes timing, not the flight, so it needs no samples.
+  if (!hasVariation({ vary: { ...ball.vary, freq: 0 } })) return out;
   const rng = seeded(1234);
   let landed = 0;
   for (let i = 0; i < samples; i++) {

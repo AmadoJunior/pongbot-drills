@@ -23,7 +23,7 @@ export function newBall(position = 10, rot = 0, device = 'nova') {
   const d = deviceOf(device).defaults(position);
   return {
     height: d.height, rot, angle: ROT_ANGLE[rot], drop: 0, speed: d.speed, spin: 0, freq: 50, reps: 1, rail: 0,
-    vary: { speed: 0, spin: 0, height: 0, drop: 0, rail: 0 },
+    vary: { speed: 0, spin: 0, height: 0, drop: 0, rail: 0, freq: 0 },
   };
 }
 
@@ -53,7 +53,7 @@ function normalizeBall(b, device = 'nova') {
     freq: num(b.freq, 'freq', 50), reps: num(b.reps, 'reps', 1), rail: device === 'halo' ? num(b.rail, 'rail') : 0,
     vary: {},
   };
-  for (const f of ['speed', 'spin', 'height', 'drop', 'rail']) ball.vary[f] = Math.max(0, Number(b.vary?.[f]) || 0);
+  for (const f of ['speed', 'spin', 'height', 'drop', 'rail', 'freq']) ball.vary[f] = Math.max(0, Number(b.vary?.[f]) || 0);
   if (Array.isArray(b.leds)) ball.leds = b.leds;
   return ball;
 }
@@ -194,7 +194,7 @@ function importOlangaCsv(text) {
 function foldVariants(variants) {
   if (variants.length === 1) return variants[0];
   const ball = { ...variants[0], vary: { ...variants[0].vary } };
-  for (const f of ['speed', 'spin', 'height', 'drop']) {
+  for (const f of ['speed', 'spin', 'height', 'drop', 'freq']) {
     const vals = variants.map(v => v[f]);
     const lo = Math.min(...vals), hi = Math.max(...vals);
     const step = DEVICES.nova.fields[f].step;

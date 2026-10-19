@@ -101,7 +101,7 @@ export function render(view, ctx) {
       const sh = s.shot.shot;
       $('#shot', view).innerHTML = `<span class="chip accent">Ball ${s.shot.ballIndex + 1}</span>` +
         [['Speed', sh.speed, 0.5], ['Spin', sh.spin, 0.5], ['Height', sh.height, 1], ['Drop', sh.drop, 1],
-          ...(drill.device === 'halo' ? [['Rail', sh.rail, 1]] : [])]
+          ...(drill.device === 'halo' ? [['Rail', sh.rail, 1]] : []), ['Freq', sh.freq, 1]]
           .map(([l, v, st]) => `<span class="chip">${l} <b class="num">${esc(fmt(v, st))}</b></span>`).join('');
       drawShot(s.shot);
     }

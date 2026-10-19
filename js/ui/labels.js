@@ -35,7 +35,7 @@ export function ballSummary(b, device = 'nova') {
     `Height ${withVary(b.height, b.vary.height, 1)}`,
     `Drop ${withVary(b.drop, b.vary.drop, 1)}`,
     deviceOf(device).rail ? `Rail ${withVary(b.rail, b.vary.rail, 1)}` : '',
-    `Freq ${b.freq}`,
+    `Freq ${withVary(b.freq, b.vary.freq, 1)}`,
     b.reps > 1 ? `×${b.reps}` : '',
   ].filter(Boolean).join(' · ');
 }

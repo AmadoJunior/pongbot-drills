@@ -2,8 +2,8 @@
 
 A personal controller for the Pongbot **Nova S Pro** and **Halo S Pro**. It
 rebuilds the official app's **Custom Drills** section and adds **per-shot
-variation**: a ± range on speed, spin, ball height and drop point (and rail
-position on the Halo), rolled again for every single shot while the ball order
+variation**: a ± range on speed, spin, ball height, drop point and frequency
+(and rail position on the Halo), rolled again for every single shot while the ball order
 stays fixed.
 
 Built on [olanga/nova](https://github.com/olanga/nova) (the original app is on
@@ -68,9 +68,9 @@ drill made for the other model.
 5. **Ball settings.** Set Ball Height, Rotation Type (circular dial), Drop
    Point, Rail (Halo), Speed, Spin, Freq. and Number of Repetition, with live
    top and side ball prediction.
-   - Tap **±** on Speed, Spin, Ball Height or Drop Point to set a random
-     range. The preview shows the spread and the share of varied shots that
-     land.
+   - Tap **±** on Speed, Spin, Ball Height, Drop Point or Freq. to set a
+     random range. The preview shows the spread and the share of varied shots
+     that land. A Freq. range varies the timing between shots.
    - Ball Test serves the ball five times, each shot with its own roll.
 6. **Drill Prep.** Choose the serve mode (number of combos, or minutes) and
    Sequential or Random order, then Start.
