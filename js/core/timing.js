@@ -79,9 +79,14 @@ export function loadTimingSessions() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]'); } catch { return []; }
 }
 
+/** Best effort: a full or missing storage must never break ending a drill. */
 export function saveTimingSession(record) {
-  const all = [record, ...loadTimingSessions()].slice(0, KEEP_SESSIONS);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  try {
+    const all = [record, ...loadTimingSessions()].slice(0, KEEP_SESSIONS);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.warn('timing log not saved', e);
+  }
 }
 
 export function clearTimingSessions() {

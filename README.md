@@ -82,11 +82,19 @@ drill made for the other model.
   itself, exactly like the official app.
 - **Drills with ranges** are sent in batches of up to 20 shots. Each repetition
   of a varied ball becomes its own shot with fresh values, and as many whole
-  combos as fit go into one upload. The next batch is uploaded when the robot
-  reports the current one complete, so there may be a pause between batches.
-  **Not yet measured on a robot:** the pause length, and whether the robot
-  accepts more than 20 balls per upload (20 Nova balls is 487 bytes, just
-  under Web Bluetooth's 512-byte limit for one write).
+  combos as fit go into one upload.
+  - **Nova:** the drill runs in endless mode, and right after the last shot of
+    a batch the next batch replaces the balls with the live-edit command
+    (`0x84`), so the wheels keep running. This is the method
+    [smee's Nova client](https://github.com/smee/nova-s-custom-drills) uses on
+    a real Nova; the official app uses the same command in Combo Test. It
+    needs combos of at most 20 balls; longer combos use the Halo method.
+  - **Halo:** it has no live-edit command (on the Halo, `0x84` deletes drills
+    stored on the robot, so the app refuses to send it). The next batch starts
+    with a new upload when the robot reports the current one complete, so
+    there may be a pause between batches, probably with the wheels stopping.
+  - **Not yet measured on the robots:** how long the Halo pause is, and
+    whether the Nova swap is truly seamless.
 - **Measuring it:** during a drill with ranges, the serving screen shows the
   last batch gap next to the normal shot spacing. Settings → Shot timing keeps
   the last 10 sessions, with Copy log / Save log for the raw robot messages.

@@ -2,7 +2,7 @@
 // without hardware (open the app with ?mock, or ?mock=halo).
 import {
   SERVICE_ADV, SERVICE, CHAR_WRITE, CHAR_NOTIFY, CMD, STATE, authResponse, parseNotification,
-  haloFrame, haloUnframe, HALO_CHUNK,
+  haloFrame, haloUnframe, HALO_CHUNK, assertSendable,
 } from './core/protocol.js';
 import { deviceFromName } from './core/devices.js';
 
@@ -74,6 +74,7 @@ export class BleRobot extends RobotBase {
 
   send(bytes) {
     let data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    assertSendable(this.model, data);
     // The Halo wraps every command in a CRC frame, written in 252-byte chunks.
     const chunks = [];
     if (this.model === 'halo') {
@@ -157,6 +158,7 @@ export class MockRobot extends RobotBase {
 
   async send(bytes) {
     const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    assertSendable(this.model, b);
     this.#ballSize = this.model === 'halo' ? 56 : 24;
     const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
     if (b[0] === 0x81) {

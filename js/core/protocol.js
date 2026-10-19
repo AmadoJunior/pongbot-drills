@@ -121,6 +121,18 @@ export function haloUnframe(bytes) {
 export const HALO_CHUNK = 252;
 
 /** 0x84 replace the balls of the running drill (used by the official Combo Test). */
+/**
+ * Refuses commands that mean something destructive on the connected model.
+ * On the Halo, 0x84 is syncDelGroup (deletes drills stored on the robot), not
+ * the Nova's "modify running drill" (see re/FINDINGS.md). OTA commands
+ * (0xC0-0xC5) are never sent to either robot.
+ */
+export function assertSendable(model, bytes) {
+  const op = bytes[0];
+  if (model === 'halo' && op === 0x84) throw new Error('0x84 deletes stored drills on the Halo; refusing to send it');
+  if (op >= 0xc0 && op <= 0xc5) throw new Error(`OTA command 0x${op.toString(16)} is never sent`);
+}
+
 export function modifyPacket(balls) {
   const out = new Uint8Array(3 + balls.length * 24);
   const v = new DataView(out.buffer);

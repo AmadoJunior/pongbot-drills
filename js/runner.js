@@ -2,9 +2,16 @@
 //
 // Fixed drills are uploaded once with the official mode/count/random header
 // and the robot loops them. Drills with variation are fed in batches from
-// the scheduler, each batch with freshly rolled shots.
-import { CMD, MODE, STATE, drillPacket, packBall } from './core/protocol.js';
-import { drillHasVariation, nextBatch, MAX_BALLS } from './core/scheduler.js';
+// the scheduler, each batch with freshly rolled shots:
+// - Nova, seamless (smee's method, see re/evidence/community_smee_nova.md):
+//   the drill runs in endless mode and right after the last shot of a batch
+//   the next batch replaces the balls with 0x84, so the wheels keep running.
+//   0x84 needs the same number of balls each time, so every batch is the same
+//   number of whole combos.
+// - Otherwise (Halo, which has no live edit, or a combo longer than one
+//   batch): wait for "complete", then start the next batch with a new 0x81.
+import { CMD, MODE, STATE, drillPacket, modifyPacket, packBall } from './core/protocol.js';
+import { drillHasVariation, nextBatch, buildCycle, MAX_BALLS } from './core/scheduler.js';
 import { rollBall } from './core/variation.js';
 import { deviceOf } from './core/devices.js';
 import * as timing from './core/timing.js';
@@ -48,7 +55,13 @@ export class Runner extends EventTarget {
       cyclesDone: 0, elapsedMs: 0, resumedAt: Date.now(), paused: false,
       varied: drillHasVariation(plan), entries: [], batchCycles: 0, pending: [],
       shot: null, shotCount: 0, waiting: true, timing: timing.newTiming(), batchNo: 0,
+      seamlessCycles: 0, shotsInBatch: 0, batchShots: 0, cycleEnds: [],
     };
+    if (this.session.varied && deviceOf(plan).id === 'nova') {
+      // Every combo has the same number of entries (shuffling keeps the count).
+      const len = buildCycle(plan).length;
+      if (len <= MAX_BALLS) this.session.seamlessCycles = Math.floor(MAX_BALLS / len);
+    }
     this.session.tick = setInterval(() => this.#tick(), 250);
     if (!deferred) this.begin();
     this.#emit();
@@ -60,7 +73,8 @@ export class Runner extends EventTarget {
     s.waiting = false;
     s.resumedAt = Date.now();
     s.timing = timing.newTiming(s.resumedAt);
-    if (s.varied) this.#sendBatch();
+    if (s.seamlessCycles) this.#sendSeamless();
+    else if (s.varied) this.#sendBatch();
     else this.#sendNative();
     this.#emit();
   }
@@ -118,12 +132,60 @@ export class Runner extends EventTarget {
     timing.onBatchSent(s.timing, Date.now(), s.batchNo++ === 0);
   }
 
+  // Next batch of whole combos: started with 0x81 (endless) the first time,
+  // then swapped in with 0x84. Records where each combo ends, in shots.
+  #sendSeamless() {
+    const s = this.session;
+    const d = s.drill;
+    const entries = [];
+    s.cycleEnds = [];
+    let shots = 0;
+    for (let c = 0; c < s.seamlessCycles; c++) {
+      for (const e of buildCycle(d)) {
+        entries.push(e);
+        shots += e.reps;
+      }
+      s.cycleEnds.push(shots);
+    }
+    s.entries = entries;
+    s.batchShots = shots;
+    s.shotsInBatch = 0;
+    const balls = entries.map(e => packBall(e.shot, e.reps, d.device, d.position));
+    const first = s.batchNo++ === 0;
+    this.robot.send(first ? drillPacket(balls, MODE.endless, 0, false) : modifyPacket(balls));
+    timing.onBatchSent(s.timing, Date.now(), first);
+  }
+
+  #onSeamlessShot() {
+    const s = this.session;
+    s.shotsInBatch++;
+    while (s.cycleEnds.length && s.shotsInBatch >= s.cycleEnds[0]) {
+      s.cycleEnds.shift();
+      s.cyclesDone++;
+    }
+    if (!s.timed && s.cyclesDone >= s.cyclesTotal) {
+      this.robot.send(CMD.stop);
+      return this.#finish('done');
+    }
+    // The last shot of the batch just fired: swap in the next one before the
+    // robot loops back to its first ball.
+    if (s.shotsInBatch >= s.batchShots) this.#sendSeamless();
+  }
+
   #onMessage(msg) {
     const s = this.session;
     if (!s) return;
     if (!s.waiting) timing.onMessage(s.timing, msg);
     if (msg.type === 'drillAck' && !msg.ok) {
       this.#finish('rejected');
+    } else if (msg.type === 'progress' && s.seamlessCycles) {
+      const entry = s.entries[msg.ball - 1];
+      if (entry) {
+        s.shot = entry;
+        s.shotCount++;
+      }
+      this.#onSeamlessShot();
+      this.#emit();
     } else if (msg.type === 'progress') {
       if (!s.varied) s.cyclesDone = Math.max(0, msg.group - 1);
       const entry = s.entries[msg.ball - 1];
@@ -133,7 +195,7 @@ export class Runner extends EventTarget {
       }
       this.#emit();
     } else if (msg.type === 'status' && msg.state === STATE.complete) {
-      if (!s.varied) return this.#finish('done');
+      if (!s.varied || s.seamlessCycles) return this.#finish('done');
       timing.onComplete(s.timing);
       s.cyclesDone += s.batchCycles;
       const timeUp = s.timed && this.elapsed() >= s.timeTotalMs;
