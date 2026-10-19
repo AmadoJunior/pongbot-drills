@@ -96,7 +96,9 @@ drill made for the other model.
 - **Official app:** run `python tools/import_official.py` and log in with your
   Pongbot account. It writes `official_drills.json` with your Nova and Halo
   drills; import that file in the app. It keeps the raw server responses in
-  `official_raw/`.
+  `official_raw/`. Your login is saved in `~/.pongbot/token.json` (in your user
+  profile, never in this folder) so later runs don't ask again; the password
+  is never stored. `python tools/pongbot_auth.py --logout` deletes it.
 - **olanga/nova CSV:** import the CSV directly. Variants of a ball are merged
   into one ball with ± ranges that cover them.
 - **Nova+ backup JSON:** import it directly.

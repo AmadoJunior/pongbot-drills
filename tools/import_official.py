@@ -3,7 +3,9 @@
 Usage:  python import_official.py [output.json]
 
 Logs in with your Pongbot account (the password is typed at a prompt and not
-stored), downloads your custom drill groups and writes them to a JSON file.
+stored; the session token is cached in ~/.pongbot/token.json, see
+pongbot_auth.py), downloads your custom drill groups and writes them to a
+JSON file.
 Import that file in Nova+ (··· -> Import drills).
 
 The endpoints and field names come from reverse engineering the official app
@@ -11,42 +13,23 @@ The endpoints and field names come from reverse engineering the official app
 server, so the script saves every raw response under ./official_raw/ to help
 adjust it if something doesn't match.
 """
-import getpass
 import json
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
-BASE = "https://intel.futuremind.com.cn/app"
+from pongbot_auth import Session
+
 # Product series code -> robot (from queryProductSeriesByUser).
 SERIES_MODEL = {"O38": "nova", "O58": "halo"}
 RAW = Path("official_raw")
 
 
-def call(method, path, token=None, body=None, tag="", sub=""):
-    url = BASE + path
-    headers = {"Content-Type": "application/json; charset=UTF-8", "Accept-Language": "en", "appOs": "android"}
-    if token:
-        headers["Authorization"] = token
-    data = None
-    if method == "GET" and body:
-        url += "?" + urllib.parse.urlencode(body)
-    elif body is not None:
-        data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as r:
-            text = r.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        text = e.read().decode("utf-8", "replace")
+def call(session, method, path, body=None, tag="", sub=""):
+    """Authenticated call that also keeps the raw response under official_raw/."""
+    resp, text = session.call(method, path, body)
     name = path.strip("/").replace("/", "_") + f"_{method}{tag}.json"
     (RAW / sub / name).write_text(text, encoding="utf-8")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return {"raw": text}
+    return resp
 
 
 def rows_of(resp):
@@ -72,15 +55,7 @@ def collect_series(resp, out):
 def main():
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "official_drills.json")
     RAW.mkdir(exist_ok=True)
-    account = input("Pongbot account (email): ").strip()
-    password = getpass.getpass("Password: ")
-
-    login = call("POST", "/auth/login/userlogin", body={"account": account, "password": password})
-    data = login.get("data") if isinstance(login, dict) else None
-    token = data.get("token") if isinstance(data, dict) else data if isinstance(data, str) else None
-    if not token:
-        sys.exit(f"Login failed: {login.get('message') or login}")
-    print("Logged in.")
+    session = Session()
 
     # The group query needs the product series of your robot; the official app
     # takes it from your registered devices.
@@ -88,7 +63,7 @@ def main():
     for method, path in (("GET", "/machine/productSeriesMachine/queryProductSeriesByUser"),
                          ("POST", "/machine/productSeriesMachine/queryDevices"),
                          ("POST", "/machine/querySingleDevices")):
-        resp = call(method, path, token, {} if method == "POST" else None)
+        resp = call(session, method, path, {} if method == "POST" else None)
         collect_series(resp, candidates)
     candidates = [c for c in candidates if isinstance(c, str)] or ["O38", "O58"]
     print("Product series to try:", candidates)
@@ -98,7 +73,7 @@ def main():
         page = 1
         while True:
             body = {"groupName": "", "pageNum": page, "pageSize": 50, "type": 2, "isMine": 1, "productSeries": sid}
-            resp = call("POST", "/machine/userGroup/queryUserGroup", token, body, tag=f"_{sid}_{page}")
+            resp = call(session, "POST", "/machine/userGroup/queryUserGroup", body, tag=f"_{sid}_{page}")
             rows = [r for r in rows_of(resp) if isinstance(r, dict)]
             new = []
             for r in rows:
@@ -119,20 +94,19 @@ def main():
         gid = r.get("groupSeriesId")
         print(f"  details {i}/{len(drills)}: {r.get('groupName')}", end=chr(13))
         # Official app: ApiDeviceService.queryGroupSeriesById (also used for custom drills).
-        detail = call("GET", f"/machine/sysGroup/queryGroupDetail/{gid}", token, sub="details")
+        detail = call(session, "GET", f"/machine/sysGroup/queryGroupDetail/{gid}", sub="details")
         r["detail"] = detail.get("data") if isinstance(detail, dict) else detail
         r["model"] = SERIES_MODEL.get(r["productSeries"], "")
     print()
 
     # Editor field limits per robot (queryUserGroupSettingConfig), kept for reference.
     for series in SERIES_MODEL:
-        call("GET", f"/machine/groupConfig/queryGroupCustomerParam/{series}", token, sub="details")
+        call(session, "GET", f"/machine/groupConfig/queryGroupCustomerParam/{series}", sub="details")
 
     out.write_text(json.dumps({"rows": drills}, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Saved {len(drills)} drills to {out}. Raw responses are in {RAW}/.")
     if not drills:
-        print("No drills found. The machine_*.json files in official_raw/ show what the server returned "
-              "(auth_login_userlogin_POST.json holds your session token, so don't share that one).")
+        print("No drills found. The machine_*.json files in official_raw/ show what the server returned.")
 
 
 if __name__ == "__main__":
