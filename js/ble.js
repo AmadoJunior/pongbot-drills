@@ -8,6 +8,21 @@ import { deviceFromName } from './core/devices.js';
 
 const HEARTBEAT_MS = 10000;
 
+// Lightweight connection tracing. Logs to the console with a time offset from
+// connect() so a disconnect can be told apart from an auth-watchdog timeout
+// (the Halo firmware allows 9s to sign in). On by default; silence it with
+// window.bleTrace = false or ?trace=off.
+const hex = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join(' ');
+function makeTrace() {
+  const off = new URLSearchParams(location.search).get('trace') === 'off';
+  let t0 = 0;
+  return (...a) => {
+    if (globalThis.bleTrace === false || (off && globalThis.bleTrace !== true)) return;
+    if (a[0] === 'reset') { t0 = performance.now(); return; }
+    console.log(`[ble +${((performance.now() - t0) / 1000).toFixed(2)}s]`, ...a);
+  };
+}
+
 class RobotBase extends EventTarget {
   constructor() {
     super();
@@ -35,6 +50,7 @@ export class BleRobot extends RobotBase {
   #step = 'idle';
   #queue = Promise.resolve();
   #heartbeat = null;
+  #trace = makeTrace();
 
   static get supported() {
     return 'bluetooth' in navigator;
@@ -42,6 +58,7 @@ export class BleRobot extends RobotBase {
 
   async connect() {
     this.setConnection('connecting');
+    this.#trace('reset');
     try {
       this.#device = await navigator.bluetooth.requestDevice({
         filters: [{ services: [SERVICE_ADV] }, { namePrefix: 'NOVA' }, { namePrefix: 'HALO' }],
@@ -49,20 +66,26 @@ export class BleRobot extends RobotBase {
       });
       this.name = this.#device.name ?? 'Nova S Pro';
       this.model = deviceFromName(this.name);
+      this.#trace('chosen', this.name, '->', this.model);
       this.#device.addEventListener('gattserverdisconnected', () => this.#onDisconnect());
       const server = await this.#device.gatt.connect();
+      this.#trace('gatt connected');
       const service = await server.getPrimaryService(SERVICE);
       for (const c of await service.getCharacteristics()) {
         if (c.uuid === CHAR_NOTIFY) {
           await c.startNotifications();
+          this.#trace('notifications on', CHAR_NOTIFY);
           c.addEventListener('characteristicvaluechanged', e => this.#onNotify(e.target.value));
         }
         if (c.uuid === CHAR_WRITE) this.#write = c;
       }
       if (!this.#write) throw new Error('write characteristic not found');
       this.#step = 'access';
+      this.#trace('-> access: sending accessInfo (0x07)');
       await this.send(CMD.accessInfo);
+      this.#trace('accessInfo written, awaiting challenge');
     } catch (e) {
+      this.#trace('connect() threw', e?.message ?? e);
       this.setConnection('disconnected');
       throw e;
     }
@@ -84,13 +107,14 @@ export class BleRobot extends RobotBase {
       chunks.push(data);
     }
     for (const c of chunks) {
-      this.#queue = this.#queue.then(() => this.#write?.writeValue(c)).catch(e => console.warn('BLE write', e));
+      this.#queue = this.#queue.then(() => this.#write?.writeValue(c)).catch(e => this.#trace('BLE write failed', e?.message ?? e));
     }
     return this.#queue;
   }
 
   #onNotify(dv) {
     const raw = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+    this.#trace(`notify @${this.#step}`, hex(raw));
     const bytes = this.#step === 'ready' ? raw : haloUnframe(raw);
     // Handshake: access info -> MD5 reply -> 01 00 00 -> 02 00 00 -> wake.
     switch (this.#step) {
@@ -115,6 +139,7 @@ export class BleRobot extends RobotBase {
   }
 
   #onDisconnect() {
+    this.#trace(`gattserverdisconnected (was @${this.#step})`);
     clearInterval(this.#heartbeat);
     this.#write = null;
     this.#step = 'idle';
