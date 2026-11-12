@@ -2,7 +2,7 @@
 // load; when the network is slow or missing, the cached copy is used.
 // Every app file is cached at install, so the app opens offline after one
 // visit. tests/pwa.test.mjs checks that APP_FILES lists every app file.
-const CACHE = 'novaplus-v2';
+const CACHE = 'novaplus-v3';
 const NETWORK_TIMEOUT_MS = 3000;
 
 const APP_FILES = [

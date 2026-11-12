@@ -8,18 +8,83 @@ import { deviceFromName } from './core/devices.js';
 
 const HEARTBEAT_MS = 10000;
 
-// Lightweight connection tracing. Logs to the console with a time offset from
-// connect() so a disconnect can be told apart from an auth-watchdog timeout
-// (the Halo firmware allows 9s to sign in). On by default; silence it with
-// window.bleTrace = false or ?trace=off.
+// Connection tracing that works on a phone, where there is no console. Every
+// line is kept in localStorage (so it survives the disconnect and reload) and
+// shown in a floating on-screen panel with Copy/Clear. A disconnect can thus
+// be told apart from the firmware's 9s sign-in watchdog after the fact.
+// On by default; silence with window.bleTrace = false or ?trace=off.
 const hex = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join(' ');
+const LOG_KEY = 'bleLog';
+const LOG_CAP = 400;
+
+function traceEnabled() {
+  if (globalThis.bleTrace === false) return false;
+  if (globalThis.bleTrace === true) return true;
+  try { return new URLSearchParams(location.search).get('trace') !== 'off'; } catch { return true; }
+}
+
+let logLines = [];
+try { logLines = JSON.parse(localStorage.getItem(LOG_KEY)) || []; } catch { logLines = []; }
+let logBody = null;
+
+function logPersist() {
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(logLines.slice(-LOG_CAP))); } catch { /* quota/private */ }
+}
+
+function logCopy() {
+  const text = logLines.join('\n');
+  try {
+    navigator.clipboard?.writeText(text);
+  } catch { /* fall through */ }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch { /* ignore */ }
+  ta.remove();
+}
+
+function mountLogPanel() {
+  if (logBody || typeof document === 'undefined' || !document.body || !traceEnabled()) return;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:8px;align-items:center;background:#111;color:#4ade80;padding:5px 10px';
+  const title = document.createElement('span');
+  title.style.cssText = 'flex:1;font-weight:bold';
+  const body = document.createElement('div');
+  body.style.cssText = 'max-height:42vh;overflow:auto;background:rgba(0,0,0,.92);color:#e5e7eb;padding:6px 10px;white-space:pre-wrap;word-break:break-all';
+  let open = false;
+  try { open = localStorage.getItem('bleLogOpen') === '1'; } catch { /* ignore */ }
+  const refreshTitle = () => { title.textContent = `BLE trace (${logLines.length}) ${open ? '▼' : '▲'}`; };
+  const setOpen = o => { open = o; body.style.display = o ? 'block' : 'none'; try { localStorage.setItem('bleLogOpen', o ? '1' : '0'); } catch { /* ignore */ } refreshTitle(); };
+  title.onclick = () => setOpen(!open);
+  const mkBtn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'background:#333;color:#fff;border:0;border-radius:4px;padding:3px 8px'; b.onclick = fn; return b; };
+  bar.append(title, mkBtn('Copy', logCopy), mkBtn('Clear', () => { logLines = []; logPersist(); body.textContent = ''; refreshTitle(); }));
+  wrap.append(bar, body);
+  document.body.appendChild(wrap);
+  logBody = body;
+  body.textContent = logLines.join('\n');
+  setOpen(open);
+  body.scrollTop = body.scrollHeight;
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountLogPanel);
+  else mountLogPanel();
+}
+
 function makeTrace() {
-  const off = new URLSearchParams(location.search).get('trace') === 'off';
   let t0 = 0;
   return (...a) => {
-    if (globalThis.bleTrace === false || (off && globalThis.bleTrace !== true)) return;
+    if (!traceEnabled()) return;
     if (a[0] === 'reset') { t0 = performance.now(); return; }
-    console.log(`[ble +${((performance.now() - t0) / 1000).toFixed(2)}s]`, ...a);
+    const line = `[+${((performance.now() - t0) / 1000).toFixed(2)}s] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+    console.log('[ble]', line);
+    logLines.push(line);
+    if (logLines.length > LOG_CAP) logLines = logLines.slice(-LOG_CAP);
+    logPersist();
+    mountLogPanel();
+    if (logBody) { logBody.textContent = logLines.join('\n'); logBody.scrollTop = logBody.scrollHeight; }
   };
 }
 
