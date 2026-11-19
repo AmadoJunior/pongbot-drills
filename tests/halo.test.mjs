@@ -122,8 +122,11 @@ test('frequency variation is rolled per shot on both robots, within 0-100', () =
   for (const device of ['nova', 'halo']) {
     const d = newDrill(device === 'halo' ? 1 : 10, 2, device);
     d.balls = [{ ...newBall(1, 0, device), reps: 60, freq: 95, vary: { speed: 0, spin: 0, height: 0, drop: 0, rail: 0, freq: 10 } }];
-    const freqs = buildCycle(d).map(e => e.shot.freq);
-    assert.equal(freqs.length, 60, `${device}: each repetition becomes its own shot`);
+    const cycle = buildCycle(d);
+    const freqs = cycle.map(e => e.shot.freq);
+    // 60 repetitions don't fit one upload: 20 rolls, each served 3 times.
+    assert.equal(freqs.length, 20, `${device}: one roll per upload slot`);
+    assert.deepEqual(new Set(cycle.map(e => e.reps)), new Set([3]), device);
     assert.ok(new Set(freqs).size > 5, device);
     for (const f of freqs) assert.ok(f >= 85 && f <= 100 && Number.isInteger(f), `${device}: ${f}`);
   }

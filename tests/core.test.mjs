@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toRobot, maxSpin, wheelRpm, simulate, ROBOT_POSITIONS, headForType } from '../js/core/physics.js';
 import { rollField, rollBall, hasVariation } from '../js/core/variation.js';
-import { buildCycle, nextBatch, MAX_BALLS } from '../js/core/scheduler.js';
+import { buildCycle, nextBatch, rollSlots, MAX_BALLS } from '../js/core/scheduler.js';
 import { drillPacket, packBall, parseNotification, authResponse, MODE } from '../js/core/protocol.js';
 import { importText, newDrill, newBall } from '../js/core/drills.js';
 
@@ -87,14 +87,41 @@ test('nextBatch packs whole cycles up to 20 balls', () => {
   assert.equal(nextBatch(d, 2).entries.length, 6);
 });
 
-test('nextBatch splits a cycle longer than one upload', () => {
+test('a cycle longer than one upload is squeezed into one whole cycle', () => {
   const d = newDrill();
-  d.balls = [ball({ reps: 30, vary: { drop: 2 } })];
+  // 12 + 12 varied shots + 1 fixed ball = 25 entries unsqueezed.
+  d.balls = [ball({ reps: 12, vary: { drop: 2 } }), ball({ reps: 4 }), ball({ reps: 12, vary: { spin: 1 } })];
+  assert.deepEqual(rollSlots(d), [9, 1, 10]);
+  const b = nextBatch(d, 5);
+  assert.equal(b.cycles, 1);
+  assert.equal(b.rest.length, 0);
+  assert.equal(b.entries.length, MAX_BALLS);
+  // Every repetition is still served, in ball order, spread evenly.
+  const repsOf = i => b.entries.filter(e => e.ballIndex === i).map(e => e.reps);
+  assert.deepEqual(repsOf(0), [2, 2, 2, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(repsOf(1), [4]);
+  assert.deepEqual(repsOf(2), [2, 2, 1, 1, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(b.entries.map(e => e.ballIndex), [...Array(9).fill(0), 1, ...Array(10).fill(2)]);
+});
+
+test('cycle length stays the same with a random order (needed by 0x84)', () => {
+  const d = { ...newDrill(), sequence: 'random' };
+  d.balls = [ball({ reps: 15, vary: { drop: 2 } }), ball({ reps: 3 }), ball({ reps: 9, vary: { speed: 1 } })];
+  for (let k = 0; k < 20; k++) {
+    const c = buildCycle(d);
+    assert.equal(c.length, MAX_BALLS);
+    assert.equal(c.reduce((a, e) => a + e.reps, 0), 27);
+  }
+});
+
+test('nextBatch still splits a cycle with more balls than one upload', () => {
+  const d = newDrill();
+  d.balls = Array.from({ length: 25 }, () => ball({ vary: { drop: 2 } }));
   const first = nextBatch(d, 5);
   assert.equal(first.entries.length, MAX_BALLS);
   assert.equal(first.cycles, 0);
   const second = nextBatch(d, 5, Math.random, first.rest);
-  assert.equal(second.entries.length, 10);
+  assert.equal(second.entries.length, 5);
   assert.equal(second.cycles, 1);
 });
 

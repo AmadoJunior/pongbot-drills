@@ -8,8 +8,11 @@
 //   the next batch replaces the balls with 0x84, so the wheels keep running.
 //   0x84 needs the same number of balls each time, so every batch is the same
 //   number of whole combos.
-// - Otherwise (Halo, which has no live edit, or a combo longer than one
-//   batch): wait for "complete", then start the next batch with a new 0x81.
+// - Otherwise (Halo, which has no live edit): wait for "complete", then
+//   start the next batch with a new 0x81.
+// Either way a batch holds only whole combos (scheduler.rollSlots squeezes a
+// long combo into one batch), so the pause between batches falls between
+// two combos, not in the middle of one.
 import { CMD, MODE, STATE, drillPacket, modifyPacket, packBall } from './core/protocol.js';
 import { drillHasVariation, nextBatch, buildCycle, MAX_BALLS } from './core/scheduler.js';
 import { rollBall } from './core/variation.js';
