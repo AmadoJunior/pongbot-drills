@@ -24,10 +24,40 @@ export function render(view, ctx) {
       <button class="btn small ghost" id="lab">Open</button>
     </div>
     <div class="card" id="timing"></div>
+    <div class="card">
+      <div class="row-between"><b>App version</b><button class="btn small ghost" id="update">Check for updates</button></div>
+      <div class="hint" id="version" style="margin-top:6px">…</div>
+    </div>
     <div class="card hint">Nova+ is a personal controller for the Pongbot Nova S Pro, based on olanga/nova and the
       official app's protocol and ball physics. Drills are stored in this browser; use Export to back them up.</div>`;
 
   $('#lab', view).addEventListener('click', () => ctx.go('#/lab'));
+  paintVersion();
+  $('#update', view).addEventListener('click', checkForUpdate);
+
+  // Which cached version is running, plus screen facts for layout problems
+  // on phones (installed app vs browser tab, window vs screen size).
+  async function paintVersion() {
+    let version = 'not installed for offline use';
+    try {
+      const keys = (await caches.keys()).filter(k => k.startsWith('novaplus-'));
+      if (keys.length) version = keys.sort((a, b) => parseInt(b.split('-v')[1]) - parseInt(a.split('-v')[1]))[0];
+    } catch { /* caches unavailable */ }
+    const standalone = matchMedia('(display-mode: standalone)').matches;
+    $('#version', view).textContent = `${version} · ${standalone ? 'installed app' : 'browser tab'}`
+      + ` · window ${innerWidth}×${innerHeight} · screen ${screen.width}×${screen.height}`;
+  }
+
+  async function checkForUpdate() {
+    const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
+    if (!reg) return toast('Offline support is not active in this browser');
+    toast('Checking…');
+    try { await reg.update(); } catch { return toast('Could not reach the server'); }
+    const next = reg.installing ?? reg.waiting;
+    if (!next) return toast('You have the latest version');
+    toast('Downloading the new version…', 4000);
+    // main.js reloads the app once the new version takes over.
+  }
   const len = $('#len', view);
   const paintLen = () => {
     len.innerHTML = '';

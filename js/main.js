@@ -134,4 +134,25 @@ updateConn();
 render();
 
 // Offline support and "Add to Home screen" (see sw.js).
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // An installed app is usually resumed, not reloaded, so look for a new
+    // version whenever it comes back to the screen.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update().catch(() => {});
+    });
+  }).catch(() => {});
+  // A new version took over: reload to show it, unless that would cut off a
+  // drill or a robot connection (then it shows on the next start).
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    if (runner.active || robot.connection !== 'disconnected') {
+      toast('App updated. Restart it after this session to see the changes.', 4000);
+      return;
+    }
+    reloading = true;
+    location.reload();
+  });
+}
