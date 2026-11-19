@@ -213,6 +213,9 @@ input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--primary
 .lab-meter { position: relative; height: 10px; border-radius: 5px; background: var(--bg); margin: 10px 0; }
 .lab-meter .lvl { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; background: var(--ok); transition: width .05s linear; }
 .lab-meter .thr { position: absolute; top: -3px; bottom: -3px; left: 50%; width: 2px; background: var(--danger); }
+.lab-meter .knob { position: absolute; top: -3px; bottom: -3px; left: 50%; width: 2px; background: var(--primary); }
+.lab-plot { display: block; width: 100%; height: 180px; border-radius: 10px; margin: 10px 0 4px; }
+.lab-log .off { color: var(--text-3); }
 .lab-light { display: grid; place-content: center; gap: 4px; height: 120px; border-radius: var(--radius); background: var(--bg); color: var(--text-2); text-align: center; transition: background .1s; }
 .lab-light b { font-size: 20px; color: var(--text); }
 .lab-light.hit { background: var(--primary); color: #fff; }

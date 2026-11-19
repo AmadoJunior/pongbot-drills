@@ -1,21 +1,33 @@
-// Click detector for table tennis sounds (paddle hits and table bounces).
+// Sound detector for table tennis sounds (paddle hits and bounces).
 //
 // These sounds are short, sharp transients with most of their energy above
 // ~2 kHz, while room noise and robot motor hum sit lower and change slowly.
 // So the signal is high-passed, a fast peak envelope is compared with a slow
-// running average of the background, and a click is reported when the
-// envelope jumps well above it. Plain sample-by-sample code, so the same
-// class runs in the AudioWorklet (js/audio/onset-worklet.js) and in tests.
+// running average of the background, and a candidate is reported when the
+// envelope jumps well above it. Each candidate comes with the features the
+// user tunes on (core/serve-detect.js `classify`): loudness, brightness and
+// how suddenly it rose. Plain sample-by-sample code, so the same class runs
+// in the AudioWorklet (js/audio/onset-worklet.js) and in tests.
+//
+// Measured on a phone recording of hand bounces and speech (2026-11-19):
+// a bounce jumps 16-36 dB above the 20 ms before it; its own fading tail and
+// ongoing speech don't (-4 to +13 dB). Tails are dropped here; the rest is up
+// to the user's "sudden rise" knob. (Speech starting from total silence can
+// rise sharply too; the peak's timing doesn't help, as a wooden table rings
+// and bounces peak 1-17 ms in.)
 
-/** Sensitivity 1-10 -> how far above the background a click must be. */
+/** Sensitivity 1-10 -> how far above the background a sound must be. */
 export function sensitivityToFactor(s) {
   return 3 * 10 ** ((10 - s) / 9); // 1 -> 30x, 5 -> ~11x, 10 -> 3x
 }
 
-/** Sensitivity 1-10 -> minimum click level (high-passed, full scale = 1). */
+/** Sensitivity 1-10 -> minimum candidate level (high-passed, full scale = 1). */
 export function sensitivityToFloor(s) {
   return 10 ** -(1 + s * 0.35); // 1 -> -27 dBFS, 5 -> -55 dBFS, 10 -> -90 dBFS
 }
+
+/** A candidate that rises less than this above the 5-25 ms before it is a fading tail. */
+export const TAIL_RISE_DB = 3;
 
 export class OnsetDetector {
   /** opts: { sensitivity 1-10, minGapMs, hpHz } */
@@ -25,7 +37,7 @@ export class OnsetDetector {
     this.bg = 0;              // running mean of |high-passed signal|
     this.env = 0;             // fast peak envelope
     this.lastOnset = -Infinity;
-    this.win = null;          // click being measured
+    this.win = null;          // candidate being measured
     this.levelPeak = 0;       // loudest high-passed sample since takeLevel()
     this.x1 = this.x2 = this.y1 = this.y2 = 0;
     this.fastDecay = Math.exp(-1 / (0.003 * sampleRate));
@@ -33,20 +45,21 @@ export class OnsetDetector {
     this.warmRate = 1 / (0.05 * sampleRate);
     this.warm = Math.round(0.3 * sampleRate); // learn the background before reporting
     this.winLen = Math.round(0.02 * sampleRate);
-    this.floorOverride = null;
-    this.setOptions({ sensitivity: 5, minGapMs: 80, hpHz: 2000, minBright: 0.1, ...opts });
+    // Recent history in 1 ms blocks (loudest sample per block), for the rise.
+    this.blkLen = Math.max(1, Math.round(sampleRate / 1000));
+    this.ring = new Float32Array(32);
+    this.ringPos = 0;
+    this.blkMax = 0;
+    this.blkCount = 0;
+    this.setOptions({ sensitivity: 5, minGapMs: 50, hpHz: 2000, ...opts });
   }
 
   setOptions(o) {
     if (o.sensitivity != null) {
       this.sensitivity = o.sensitivity;
       this.factor = sensitivityToFactor(o.sensitivity);
-      this.sensFloor = sensitivityToFloor(o.sensitivity);
+      this.floor = sensitivityToFloor(o.sensitivity);
     }
-    // A calibrated minimum level (dBFS) replaces the sensitivity's; null clears it.
-    if (o.floorDb !== undefined) this.floorOverride = o.floorDb == null ? null : 10 ** (o.floorDb / 20);
-    this.floor = this.floorOverride ?? this.sensFloor;
-    if (o.minBright != null) this.minBright = o.minBright;
     if (o.minGapMs != null) this.minGap = Math.round(o.minGapMs / 1000 * this.sr);
     if (o.hpHz != null) {
       // RBJ biquad high-pass, Q = 0.707.
@@ -61,7 +74,7 @@ export class OnsetDetector {
     }
   }
 
-  /** Level a click must exceed right now. */
+  /** Level a candidate must exceed right now. */
   threshold() {
     return Math.max(this.floor, this.factor * this.bg);
   }
@@ -73,12 +86,20 @@ export class OnsetDetector {
     return p;
   }
 
+  // Loudest sample 5-25 ms before now. Not closer: at low sensitivity the
+  // candidate starts a few ms into the attack, which must not count as "before".
+  #before() {
+    let m = 0;
+    for (let j = 5; j <= 25; j++) m = Math.max(m, this.ring[(this.ringPos - j + 64) & 31]);
+    return m;
+  }
+
   /**
-   * Feeds samples; returns the clicks that finished measuring in this block:
-   * { frame (where the click starts), peak (full band), peakHp, bg, bright, dull }.
-   * `bright` = high-passed peak / full-band peak. A low thump with a sudden
-   * start (footstep, robot clunk) leaks a little through the filter but stays
-   * dull (bright < minBright); ball and paddle clicks are bright.
+   * Feeds samples; returns the candidates that finished measuring in this block:
+   * { frame (where it starts), peak (full band), peakHp, bg, bright, rise }.
+   * bright = high-passed peak / full-band peak: ball and paddle sounds are
+   * bright, a low thump that only leaks through the filter is dull.
+   * rise = dB from the 5-25 ms before the sound to its peak.
    */
   process(x) {
     const out = [];
@@ -90,17 +111,30 @@ export class OnsetDetector {
       const a = Math.abs(y);
       this.env = Math.max(a, this.env * this.fastDecay);
       if (a > this.levelPeak) this.levelPeak = a;
+      if (a > this.blkMax) this.blkMax = a;
+      if (++this.blkCount >= this.blkLen) {
+        this.ring[this.ringPos] = this.blkMax;
+        this.ringPos = (this.ringPos + 1) & 31;
+        this.blkMax = 0;
+        this.blkCount = 0;
+      }
 
       if (this.win) {
         const w = this.win;
         w.peak = Math.max(w.peak, Math.abs(s));
         w.peakHp = Math.max(w.peakHp, a);
         if (--w.left <= 0) {
-          const bright = w.peakHp / Math.max(w.peak, 1e-9);
-          out.push({ frame: w.frame, peak: w.peak, peakHp: w.peakHp, bg: w.bg, bright, dull: bright < this.minBright });
           this.win = null;
+          const rise = 20 * Math.log10(w.peakHp / Math.max(w.before, 1e-7));
+          if (rise < TAIL_RISE_DB) {
+            // The fading tail of an earlier sound: not a sound of its own, and
+            // it must not block a real one that follows.
+            this.lastOnset = w.prevOnset;
+            continue;
+          }
+          out.push({ frame: w.frame, peak: w.peak, peakHp: w.peakHp, bg: w.bg, bright: w.peakHp / Math.max(w.peak, 1e-9), rise });
         }
-        continue; // the click itself must not raise the background
+        continue; // a sound must not raise the background
       }
       if (this.warm > 0) {
         this.warm--;
@@ -109,11 +143,11 @@ export class OnsetDetector {
       }
       const since = this.frame - this.lastOnset;
       if (since >= this.minGap && this.env > this.threshold()) {
+        this.win = { frame: this.frame, peak: Math.abs(s), peakHp: a, bg: this.bg, left: this.winLen, before: this.#before(), prevOnset: this.lastOnset };
         this.lastOnset = this.frame;
-        this.win = { frame: this.frame, peak: Math.abs(s), peakHp: a, bg: this.bg, left: this.winLen };
         continue;
       }
-      // Skip the ringing right after a click too.
+      // Skip the ringing right after a sound too.
       if (since > this.minGap) this.bg += (a - this.bg) * this.bgRate;
     }
     return out;

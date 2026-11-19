@@ -1,5 +1,5 @@
 // Microphone click listener. Events:
-//   'onset' detail { perf (performance.now() ms of the click), arrived, peak, peakHp, bg, bright, dull }
+//   'onset' detail { perf (performance.now() ms of the sound), arrived, peak, peakHp, bg, bright, rise }
 //   'level' detail { peak, threshold }  (high-passed, full scale = 1)
 // The phone's echo cancellation, noise suppression and auto gain are turned
 // off: they flatten or cut exactly the short clicks we listen for.

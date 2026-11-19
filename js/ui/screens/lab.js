@@ -7,15 +7,17 @@ import { store } from '../../store.js';
 import { $, esc, toast } from '../dom.js';
 import { paramRow, segmented } from '../controls.js';
 import { Mic } from '../../audio/mic.js';
-import { ServeDetector, analyzeCalibration } from '../../core/serve-detect.js';
+import { ServeDetector, analyzeCalibration, classify, DEFAULT_TUNING } from '../../core/serve-detect.js';
 import { CMD, MODE, STATE, drillPacket, packBall } from '../../core/protocol.js';
 import { rollBall } from '../../core/variation.js';
 import { newDrill } from '../../core/drills.js';
 
 const TRIALS_KEY = 'novaplus.lab.trials.v1';
-const DEFAULTS = { sensitivity: 5, triggerOn: 3, maxGapMs: 900, vibrate: true, method: 'restart', freq: 50, autoFire: false, ball: '', calib: null };
-const DEFAULT_MIN_BRIGHT = 0.1;
+const DEFAULTS = { sensitivity: 7, triggerOn: 3, maxGapMs: 900, vibrate: true, method: 'restart', freq: 50, autoFire: false, ball: '', calib: null, tuning: null };
 const CALIB_BALLS = 5;
+const PLOT_SOUNDS = 40;
+const PLOT_DB_MIN = -70;
+const WHY = { quiet: 'too quiet', dull: 'too dull', soft: 'no sudden rise' };
 const SOUND_WINDOW_MS = 2500;
 const FIRE_TIMEOUT_MS = 5000;
 const METHODS = { restart: 'Restart each shot', pause: 'Pause → resume' };
@@ -37,7 +39,15 @@ function saveTrials(trials) {
 export function render(view, ctx) {
   ctx.setTitle('Serve Lab');
   const cfg = store.settings.lab = { ...DEFAULTS, ...store.settings.lab };
+  cfg.tuning = { ...DEFAULT_TUNING, ...cfg.tuning };
   const save = () => store.saveSettings();
+  if ((cfg.v ?? 1) < 2) {
+    // v2 detector: sensitivity 7 + knobs measures more consistently (see core/onset.js).
+    Object.assign(cfg, { v: 2, sensitivity: 7 });
+    save();
+  }
+  let tune = { ...cfg.tuning };  // the knobs as moved; cfg.tuning is the saved copy
+  const sounds = [];             // recent sounds for the plot
   const robot = ctx.robot;
   const mic = new Mic();
   const serve = new ServeDetector({ triggerOn: cfg.triggerOn, maxGapMs: cfg.maxGapMs });
@@ -49,7 +59,7 @@ export function render(view, ctx) {
   let trial = null;
   let calib = null;    // calibration run in progress: { t0, shots, timer }
   let closed = false;
-  const detectorOptions = () => ({ sensitivity: cfg.sensitivity, floorDb: cfg.calib?.floorDb ?? null, minBright: cfg.calib?.minBright ?? DEFAULT_MIN_BRIGHT });
+  const detectorOptions = () => ({ sensitivity: cfg.sensitivity });
 
   view.innerHTML = `
     <div class="card">
@@ -59,10 +69,11 @@ export function render(view, ctx) {
         number picked below.</div>
       <button class="btn" id="mic-btn" style="width:100%;margin:12px 0 6px">Start listening</button>
       <div class="hint" id="mic-info"></div>
-      <div class="lab-meter" title="Live level (green) and the level a sound must pass (red)"><div class="lvl"></div><div class="thr"></div></div>
+      <div class="lab-meter" title="Live level (green), where the detector starts listening (red) and the loudness knob (orange)"><div class="lvl"></div><div class="thr"></div><div class="knob"></div></div>
       <div class="lab-light" id="light"><b id="light-title">Far bounce</b><span id="light-sub">Not listening</span></div>
       <div class="lab-dots" id="dots"></div>
       <div id="mic-params"></div>
+      <div class="param" id="tuning"></div>
       <div class="param" id="calib"></div>
       <div class="lab-log" id="log"></div>
     </div>
@@ -97,7 +108,7 @@ export function render(view, ctx) {
 
   const micParams = $('#mic-params', view);
   micParams.append(
-    paramRow({ label: 'Sensitivity', value: cfg.sensitivity, min: 1, max: 10, step: 1,
+    paramRow({ label: 'Sensitivity (how far above room noise a sound must be to be looked at)', value: cfg.sensitivity, min: 1, max: 10, step: 1,
       onChange: v => { cfg.sensitivity = v; save(); mic.setOptions({ sensitivity: v }); } }),
   );
   const trig = document.createElement('div');
@@ -118,6 +129,89 @@ export function render(view, ctx) {
     cfg.vibrate = !cfg.vibrate; save(); e.currentTarget.classList.toggle('on', cfg.vibrate);
   });
   micParams.append(vib);
+
+  // ---------- Tuning knobs: which sounds count ----------
+
+  const tuning = $('#tuning', view);
+  tuning.innerHTML = `
+    <div class="param-label" style="margin-bottom:6px"><b>Tuning: which sounds count</b></div>
+    <div class="hint">Each dot is a sound the mic heard: further right = sharper/brighter, higher = louder.
+      Orange dots count, grey rings don't; a grey ring inside the shaded area failed the sudden-rise knob (speech).
+      To tell table from floor: bounce the ball on the table a few times, then on the floor, and move the knobs until
+      only the table dots are orange. Dots re-colour as you move the knobs; tap Save to keep them.</div>
+    <canvas class="lab-plot"></canvas>
+    <div id="knobs"></div>
+    <div class="row-between" style="margin-top:8px">
+      <span class="hint" id="tune-state"></span>
+      <span style="display:flex;gap:8px">
+        <button class="btn small ghost" data-tune="defaults">Defaults</button>
+        <button class="btn small ghost" data-tune="undo">Undo</button>
+        <button class="btn small" data-tune="save">Save</button>
+      </span>
+    </div>`;
+  const plot = $('canvas', tuning);
+  const knob = (key, opts) => paramRow({ ...opts, value: tune[key], onChange: v => { tune[key] = Math.round(v * 100) / 100; tuned(); } });
+  const knobs = {
+    minLevelDb: knob('minLevelDb', { label: 'Min loudness (dB)', min: PLOT_DB_MIN, max: 0, step: 1 }),
+    minBright: knob('minBright', { label: 'Min brightness (0 = dull thud, 1 = sharp click)', min: 0, max: 1, step: 0.05, format: v => v.toFixed(2) }),
+    minRiseDb: knob('minRiseDb', { label: 'Min sudden rise (dB above the moment before)', min: 3, max: 40, step: 1 }),
+  };
+  $('#knobs', tuning).append(...Object.values(knobs));
+  const sameTune = (a, b) => Object.keys(DEFAULT_TUNING).every(k => a[k] === b[k]);
+  const setKnobs = t => {
+    tune = { ...t };
+    for (const [k, el] of Object.entries(knobs)) el.update(tune[k]);
+    tuned();
+  };
+  function tuned() {
+    const dirty = !sameTune(tune, cfg.tuning);
+    $('#tune-state', tuning).innerHTML = dirty ? '<b style="color:var(--primary)">Unsaved changes</b>' : 'Saved';
+    $('[data-tune=save]', tuning).disabled = !dirty;
+    $('[data-tune=undo]', tuning).disabled = !dirty;
+    $('.lab-meter .knob', view).style.left = `${Math.min(100, Math.max(0, (tune.minLevelDb + 80) / 80 * 100))}%`;
+    paintPlot();
+  }
+  tuning.addEventListener('click', e => {
+    const act = e.target.closest('[data-tune]')?.dataset.tune;
+    if (act === 'save') { cfg.tuning = { ...tune }; save(); tuned(); toast('Tuning saved'); }
+    if (act === 'undo') setKnobs(cfg.tuning);
+    if (act === 'defaults') setKnobs(DEFAULT_TUNING);
+  });
+
+  function paintPlot() {
+    if (closed) return;
+    const css = getComputedStyle(document.documentElement);
+    const col = n => css.getPropertyValue(n).trim();
+    const w = plot.clientWidth || 300, h = 180, dpr = devicePixelRatio || 1;
+    plot.width = w * dpr; plot.height = h * dpr;
+    const g = plot.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pad = 26;
+    const X = b => pad + Math.min(1, Math.max(0, b)) * (w - pad - 6);
+    const Y = d => 6 + (1 - (Math.min(0, Math.max(PLOT_DB_MIN, d)) - PLOT_DB_MIN) / -PLOT_DB_MIN) * (h - pad - 6);
+    g.fillStyle = col('--bg');
+    g.fillRect(0, 0, w, h);
+    // The region that counts (brighter and louder than the knobs).
+    g.fillStyle = col('--primary-soft');
+    g.fillRect(X(tune.minBright), Y(0), X(1) - X(tune.minBright), Y(tune.minLevelDb) - Y(0));
+    g.strokeStyle = col('--primary');
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(X(tune.minBright), Y(0)); g.lineTo(X(tune.minBright), Y(PLOT_DB_MIN));
+    g.moveTo(X(0), Y(tune.minLevelDb)); g.lineTo(X(1), Y(tune.minLevelDb));
+    g.stroke();
+    g.fillStyle = col('--text-2');
+    g.font = '10px system-ui, sans-serif';
+    for (const d of [0, -20, -40, -60]) g.fillText(String(d), 2, Y(d) + 3);
+    g.fillText('dull', X(0), h - 8);
+    g.fillText('bright', X(1) - 30, h - 8);
+    sounds.forEach((s, i) => {
+      const counts = !classify(s, tune);
+      g.beginPath();
+      g.arc(X(s.bright), Y(db(s.peakHp)), i === sounds.length - 1 ? 6 : 4, 0, Math.PI * 2);
+      if (counts) { g.fillStyle = col('--primary'); g.fill(); } else { g.strokeStyle = col('--text-3'); g.lineWidth = 1.5; g.stroke(); }
+    });
+  }
 
   const micBtn = $('#mic-btn', view), micInfo = $('#mic-info', view);
   const lvl = $('.lab-meter .lvl', view), thr = $('.lab-meter .thr', view);
@@ -165,16 +259,17 @@ export function render(view, ctx) {
     const o = e.detail;
     onsets.push(o);
     while (onsets.length > 200) onsets.shift();
-    if (o.dull || calib) {
-      log.unshift({ dull: o.dull, calib: !!calib, level: db(o.peakHp), bright: o.bright });
-      log.length = Math.min(log.length, 14);
-      return paintLog();
-    }
+    sounds.push(o);
+    while (sounds.length > PLOT_SOUNDS) sounds.shift();
+    paintPlot();
+    const why = classify(o, tune);
+    const entry = { level: db(o.peakHp), bright: o.bright, rise: o.rise };
+    const addLog = l => { log.unshift({ ...entry, ...l }); log.length = Math.min(log.length, 14); paintLog(); };
+    if (calib) return addLog({ calib: true, why });
+    if (why) return addLog({ why });
     const r = serve.push(o.perf);
     if (r.n === 1) runStart = o.perf;
-    log.unshift({ ...r, dt: r.ignored ? null : o.perf - runStart, level: db(o.peakHp), bright: o.bright });
-    log.length = Math.min(log.length, 14);
-    paintLog();
+    addLog({ ...r, dt: r.ignored ? null : o.perf - runStart });
     if (!r.trigger) return paintDots(r.n);
     serves++;
     flashUntil = performance.now() + 1200;
@@ -191,11 +286,11 @@ export function render(view, ctx) {
 
   function paintLog() {
     $('#log', view).innerHTML = log.length
-      ? '<div class="hint" style="margin:8px 0 2px">Sounds heard (newest first): number in the serve, time since the first, level, brightness</div>'
-        + log.map(l => `<div class="${l.trigger ? 'trig' : ''}">${l.calib ? `— calibration${l.dull ? ' (dull)' : ''}`
-          : l.dull ? '— dull thump, not counted'
+      ? '<div class="hint" style="margin:8px 0 2px">Sounds heard (newest first): number in the serve and time since the first, then loudness, brightness, sudden rise</div>'
+        + log.map(l => `<div class="${l.trigger ? 'trig' : l.why ? 'off' : ''}">${l.calib ? '— calibration'
+          : l.why ? `✗ ${WHY[l.why]}`
           : l.ignored ? '— ignored (just after a serve)'
-          : `#${l.n} · +${(l.dt / 1000).toFixed(2)} s`} · ${l.level.toFixed(0)} dB · ${l.bright.toFixed(2)}${l.trigger ? ' ← far bounce' : ''}</div>`).join('')
+          : `#${l.n} · +${(l.dt / 1000).toFixed(2)} s`} · ${l.level.toFixed(0)} dB · ${l.bright.toFixed(2)} · ↑${l.rise.toFixed(0)} dB${l.trigger ? ' ← far bounce' : ''}</div>`).join('')
       : '';
   }
 
@@ -279,10 +374,12 @@ export function render(view, ctx) {
       return;
     }
     cfg.calib = { ...res, at: new Date().toISOString() };
+    // Calibration moves the loudness and brightness knobs and saves them.
+    cfg.tuning = { ...tune, minLevelDb: res.minLevelDb, minBright: res.minBright };
     save();
-    mic.setOptions(detectorOptions());
+    setKnobs(cfg.tuning);
     paintCalib();
-    toast(`Calibrated from ${res.heard} of ${res.balls} balls`);
+    toast(`Calibrated from ${res.heard} of ${res.balls} balls: knobs set and saved`);
   }
 
   function paintCalib() {
@@ -293,14 +390,13 @@ export function render(view, ctx) {
       <div class="param-label" style="margin-bottom:6px"><b>Calibrate with the robot</b></div>
       <div class="hint">The robot fires ${CALIB_BALLS} balls of the ball picked in card 2 at your side. The app learns how loud
         and how sharp a bounce is next to the phone, and how quiet the far end of the table sounds (the robot's launch),
-        then sets the detector to match. Keep the phone out of the balls' way.</div>
-      ${c ? `<div class="lab-sum" style="margin-top:8px">Bounce near the phone ${c.bounceDb} dB · far-end launch
-        ${c.launchDb == null ? 'not heard' : `${c.launchDb} dB`} · bounce brightness ≥ ${c.bounceBright}<br>
-        → counts sounds above <b>${c.floorDb} dB</b> with brightness ≥ <b>${c.minBright}</b>
+        then sets the loudness and brightness knobs above. Keep the phone out of the balls' way.</div>
+      ${c ? `<div class="lab-sum" style="margin-top:8px">Last run: bounce near the phone ${c.bounceDb} dB · far-end launch
+        ${c.launchDb == null ? 'not heard' : `${c.launchDb} dB`} · bounce brightness ≥ ${c.bounceBright}
+        → set min loudness ${c.minLevelDb ?? c.floorDb} dB, min brightness ${c.minBright}
         <span class="hint">(${esc(new Date(c.at).toLocaleString())})</span></div>` : ''}
       <div class="lab-actions">
         <button class="btn ${c ? 'ghost' : ''}" data-calib="run" ${canRun ? '' : 'disabled'}>${calib ? 'Calibrating…' : c ? 'Calibrate again' : `Calibrate (${CALIB_BALLS} balls)`}</button>
-        ${c ? '<button class="btn small danger" data-calib="reset">Reset</button>' : ''}
       </div>
       ${canRun || calib ? '' : `<div class="hint">${mic.running ? 'Connect the robot to calibrate.' : 'Start listening to calibrate.'}</div>`}`;
   }
@@ -308,7 +404,6 @@ export function render(view, ctx) {
   $('#calib', view).addEventListener('click', e => {
     const act = e.target.closest('[data-calib]')?.dataset.calib;
     if (act === 'run') calibrate();
-    if (act === 'reset') { cfg.calib = null; save(); mic.setOptions(detectorOptions()); paintCalib(); }
   });
 
   async function send(bytes) {
@@ -470,6 +565,7 @@ export function render(view, ctx) {
   paintDots(0);
   paintBalls();
   paintRobot();
+  tuned();
 
   return () => {
     clearInterval(ticker);

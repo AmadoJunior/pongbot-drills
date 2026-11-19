@@ -15,7 +15,7 @@ class OnsetProcessor extends AudioWorkletProcessor {
     if (!ch) return true;
     this.det.frame = currentFrame; // keep click times on the AudioContext clock
     for (const ev of this.det.process(ch)) {
-      this.port.postMessage({ type: 'onset', time: ev.frame / sampleRate, peak: ev.peak, peakHp: ev.peakHp, bg: ev.bg, bright: ev.bright, dull: ev.dull });
+      this.port.postMessage({ type: 'onset', time: ev.frame / sampleRate, peak: ev.peak, peakHp: ev.peakHp, bg: ev.bg, bright: ev.bright, rise: ev.rise });
     }
     if (++this.blocks >= 16) { // ~40 ms
       this.blocks = 0;

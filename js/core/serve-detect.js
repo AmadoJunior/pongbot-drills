@@ -6,25 +6,42 @@
 // the run (3 by default, 2 when the paddle hit is too soft to register).
 // After a trigger, sounds are ignored for `cooldownMs` (the rest of the rally).
 
-const dB = v => 20 * Math.log10(Math.max(v, 1e-5));
+export const dB = v => 20 * Math.log10(Math.max(v, 1e-5));
 const median = a => {
   const s = [...a].sort((x, y) => x - y);
   return s.length ? s[Math.floor((s.length - 1) / 2)] : null;
 };
 
 /**
+ * The user's knobs: a sound counts when it is at least this loud (high-passed
+ * peak, dBFS), this bright (high-passed / full-band peak) and rose at least
+ * this many dB above the 20 ms before it. Phone recording on a wooden table
+ * (2026-11-19): bounces -2 to -23 dB with rise 16-36 dB and brightness
+ * 0.3-0.9; speech under about -28 dB with rise 1-12 dB.
+ */
+export const DEFAULT_TUNING = { minLevelDb: -50, minBright: 0.1, minRiseDb: 12 };
+
+/** Why a sound doesn't count: 'quiet' | 'dull' | 'soft' (didn't rise sharply), or null when it counts. */
+export function classify(s, t = DEFAULT_TUNING) {
+  if (dB(s.peakHp) < t.minLevelDb) return 'quiet';
+  if (s.bright < t.minBright) return 'dull';
+  if (s.rise < t.minRiseDb) return 'soft';
+  return null;
+}
+
+/**
  * Calibration from balls the robot fires at the server's side.
  * shots: performance times (ms) the robot reported each ball; sounds: mic
- * clicks { perf, peakHp, bright, dull }. Per ball, the loudest bright sound
- * is the bounce next to the phone, and a bright sound before it is the
- * launch at the far end (about as far away as a serve's far bounce).
+ * sounds { perf, peakHp, bright, rise }. Per ball, the loudest sharp, bright
+ * sound is the bounce next to the phone, and one before it is the launch at
+ * the far end (about as far away as a serve's far bounce).
  * Returns null without at least 2 bounces, else the measurements and the
- * suggested detector settings { floorDb, minBright }.
+ * suggested knobs { minLevelDb, minBright }.
  */
 export function analyzeCalibration(shots, sounds) {
   const per = shots.map((t, i) => {
     const end = Math.min(shots[i + 1] ?? Infinity, t + 1500) - 1;
-    const bright = sounds.filter(s => !s.dull && s.perf >= t - 300 && s.perf <= end);
+    const bright = sounds.filter(s => s.bright >= 0.05 && s.rise >= 6 && s.perf >= t - 300 && s.perf <= end);
     if (!bright.length) return { shot: t, bounce: null, launch: null };
     const bounce = bright.reduce((a, b) => (b.peakHp > a.peakHp ? b : a));
     const launch = bright.find(s => s.perf < bounce.perf) ?? null;
@@ -39,8 +56,8 @@ export function analyzeCalibration(shots, sounds) {
   // A serve's far bounce is ~2 m further from the phone than the robot's
   // ball: roughly 15 dB quieter. Leave 6 dB of margin below that, and go
   // lower still if the far-end launch was quieter.
-  let floorDb = bounceDb - 21;
-  if (launchDb != null) floorDb = Math.min(floorDb, launchDb - 6);
+  let minLevelDb = bounceDb - 21;
+  if (launchDb != null) minLevelDb = Math.min(minLevelDb, launchDb - 6);
   return {
     balls: shots.length,
     heard: bounces.length,
@@ -48,7 +65,7 @@ export function analyzeCalibration(shots, sounds) {
     launchDb: launchDb == null ? null : Math.round(launchDb),
     bounceBright: +minBounceBright.toFixed(2),
     shotToBounceMs: Math.round(median(per.filter(p => p.bounce).map(p => p.bounce.perf - p.shot))),
-    floorDb: Math.round(Math.max(-80, floorDb)),
+    minLevelDb: Math.round(Math.max(-70, minLevelDb)),
     // Half the dullest bounce, capped: far sounds can be a bit duller than one next to the phone.
     minBright: +Math.min(0.3, Math.max(0.05, minBounceBright * 0.5)).toFixed(2),
   };
