@@ -46,7 +46,7 @@ function logCopy() {
 function mountLogPanel() {
   if (logBody || typeof document === 'undefined' || !document.body || !traceEnabled()) return;
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace';
+  wrap.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;background:#111;padding-bottom:env(safe-area-inset-bottom)';
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;gap:8px;align-items:center;background:#111;color:#4ade80;padding:5px 10px';
   const title = document.createElement('span');
@@ -62,6 +62,11 @@ function mountLogPanel() {
   bar.append(title, mkBtn('Copy', logCopy), mkBtn('Clear', () => { logLines = []; logPersist(); body.textContent = ''; refreshTitle(); }));
   wrap.append(bar, body);
   document.body.appendChild(wrap);
+  // Publish the panel height so app.css lifts the bottom bar above it
+  // instead of the panel covering the app's buttons.
+  const syncHeight = () => document.documentElement.style.setProperty('--trace-h', `${wrap.offsetHeight}px`);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncHeight).observe(wrap);
+  syncHeight();
   logBody = body;
   body.textContent = logLines.join('\n');
   setOpen(open);
@@ -161,20 +166,23 @@ export class BleRobot extends RobotBase {
   // second ("Connection attempt failed", status 133). The Halo makes this
   // likelier: while no wireless remote is paired, its hid_task loops a 2s
   // Classic+LE scan on the same radio (re/FINDINGS.md round 8). Retry,
-  // resetting the GATT client in between.
-  async #connectGatt(attempts = 4) {
+  // resetting the GATT client in between. The official app is just as
+  // patient: up to 4 tries with a 10 s timeout each (ble_device_connection
+  // .dart), so keep trying for a time budget rather than a few fast tries.
+  async #connectGatt(budgetMs = 30000, pauseMs = 1000) {
+    const t0 = performance.now();
     for (let i = 1; ; i++) {
       try {
-        this.#trace(`gatt connect attempt ${i}/${attempts}`);
+        this.#trace(`gatt connect attempt ${i}`);
         const server = await this.#device.gatt.connect();
         this.#linked = true;
         this.#trace('gatt connected');
         return server;
       } catch (e) {
         this.#trace(`attempt ${i} failed:`, e?.message ?? String(e));
-        if (i >= attempts) throw e;
+        if (performance.now() - t0 + pauseMs >= budgetMs) throw e;
         try { this.#device.gatt.disconnect(); } catch { /* not connected */ }
-        await new Promise(r => setTimeout(r, 400 * i));
+        await new Promise(r => setTimeout(r, pauseMs));
       }
     }
   }

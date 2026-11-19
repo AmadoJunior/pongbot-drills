@@ -46,7 +46,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .conn.connecting .dot { background: #FFAC00; animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: .3; } }
 
-main { padding: 0 14px calc(env(safe-area-inset-bottom) + 120px); max-width: 640px; margin: 0 auto; }
+/* --trace-h: height of the BLE trace panel (js/ble.js), 0 when hidden. */
+main { padding: 0 14px calc(env(safe-area-inset-bottom) + var(--trace-h, 0px) + 120px); max-width: 640px; margin: 0 auto; }
 
 .card { background: var(--card); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
 .card h3 { margin: 0 0 10px; font-size: 15px; }
@@ -76,7 +77,7 @@ main { padding: 0 14px calc(env(safe-area-inset-bottom) + 120px); max-width: 640
 
 /* Bottom action bar */
 .bottom-bar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9;
+  position: fixed; left: 0; right: 0; bottom: var(--trace-h, 0px); z-index: 9;
   display: flex; gap: 10px; justify-content: center;
   padding: 12px 14px calc(env(safe-area-inset-bottom) + 12px);
   background: linear-gradient(transparent, var(--bg) 30%);
@@ -178,7 +179,7 @@ input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--primary
 .modal .row { display: flex; gap: 10px; }
 .menu-item { display: block; width: 100%; text-align: left; padding: 14px 4px; border-bottom: 1px solid var(--line); font-weight: 600; }
 .menu-item:last-child { border-bottom: 0; }
-.toast { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); z-index: 50; background: rgba(37,53,79,.95); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: 86vw; text-align: center; }
+.toast { position: fixed; left: 50%; bottom: calc(100px + var(--trace-h, 0px)); transform: translateX(-50%); z-index: 50; background: rgba(37,53,79,.95); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: 86vw; text-align: center; }
 
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .select-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
