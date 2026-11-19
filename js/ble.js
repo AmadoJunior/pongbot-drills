@@ -115,6 +115,7 @@ export class BleRobot extends RobotBase {
   #step = 'idle';
   #queue = Promise.resolve();
   #heartbeat = null;
+  #linked = false; // true once gatt.connect() succeeded
   #trace = makeTrace();
 
   static get supported() {
@@ -133,8 +134,7 @@ export class BleRobot extends RobotBase {
       this.model = deviceFromName(this.name);
       this.#trace('chosen', this.name, '->', this.model);
       this.#device.addEventListener('gattserverdisconnected', () => this.#onDisconnect());
-      const server = await this.#device.gatt.connect();
-      this.#trace('gatt connected');
+      const server = await this.#connectGatt();
       const service = await server.getPrimaryService(SERVICE);
       for (const c of await service.getCharacteristics()) {
         if (c.uuid === CHAR_NOTIFY) {
@@ -151,8 +151,31 @@ export class BleRobot extends RobotBase {
       this.#trace('accessInfo written, awaiting challenge');
     } catch (e) {
       this.#trace('connect() threw', e?.message ?? e);
+      if (this.#linked) this.#device?.gatt?.disconnect();
       this.setConnection('disconnected');
       throw e;
+    }
+  }
+
+  // Android often fails a GATT connect to an ESP32 peripheral within half a
+  // second ("Connection attempt failed", status 133). The Halo makes this
+  // likelier: while no wireless remote is paired, its hid_task loops a 2s
+  // Classic+LE scan on the same radio (re/FINDINGS.md round 8). Retry,
+  // resetting the GATT client in between.
+  async #connectGatt(attempts = 4) {
+    for (let i = 1; ; i++) {
+      try {
+        this.#trace(`gatt connect attempt ${i}/${attempts}`);
+        const server = await this.#device.gatt.connect();
+        this.#linked = true;
+        this.#trace('gatt connected');
+        return server;
+      } catch (e) {
+        this.#trace(`attempt ${i} failed:`, e?.message ?? String(e));
+        if (i >= attempts) throw e;
+        try { this.#device.gatt.disconnect(); } catch { /* not connected */ }
+        await new Promise(r => setTimeout(r, 400 * i));
+      }
     }
   }
 
@@ -205,6 +228,10 @@ export class BleRobot extends RobotBase {
 
   #onDisconnect() {
     this.#trace(`gattserverdisconnected (was @${this.#step})`);
+    // A failed connect attempt also fires this; connect() handles that case,
+    // and clearing model here would break the Halo framing on a later retry.
+    if (!this.#linked) return;
+    this.#linked = false;
     clearInterval(this.#heartbeat);
     this.#write = null;
     this.#step = 'idle';
