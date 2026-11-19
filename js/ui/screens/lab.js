@@ -140,6 +140,10 @@ export function render(view, ctx) {
       To tell table from floor: bounce the ball on the table a few times, then on the floor, and move the knobs until
       only the table dots are orange. Dots re-colour as you move the knobs; tap Save to keep them.</div>
     <canvas class="lab-plot"></canvas>
+    <div class="row-between" style="margin-bottom:4px">
+      <span class="hint" id="plot-count"></span>
+      <button class="btn small ghost" data-tune="clear">Clear dots</button>
+    </div>
     <div id="knobs"></div>
     <div class="row-between" style="margin-top:8px">
       <span class="hint" id="tune-state"></span>
@@ -176,10 +180,19 @@ export function render(view, ctx) {
     if (act === 'save') { cfg.tuning = { ...tune }; save(); tuned(); toast('Tuning saved'); }
     if (act === 'undo') setKnobs(cfg.tuning);
     if (act === 'defaults') setKnobs(DEFAULT_TUNING);
+    if (act === 'clear') {
+      sounds.length = 0;
+      log.length = 0;
+      paintPlot();
+      paintLog();
+    }
   });
 
   function paintPlot() {
     if (closed) return;
+    const counted = sounds.filter(s => !classify(s, tune)).length;
+    $('#plot-count', tuning).textContent = sounds.length
+      ? `${sounds.length} sound${sounds.length === 1 ? '' : 's'} · ${counted} count` : 'No sounds yet';
     const css = getComputedStyle(document.documentElement);
     const col = n => css.getPropertyValue(n).trim();
     const w = plot.clientWidth || 300, h = 180, dpr = devicePixelRatio || 1;
