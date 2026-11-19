@@ -19,10 +19,15 @@ export function render(view, ctx) {
         ? 'Simulator mode (opened with ?mock). No robot is used.'
         : 'Connect with the status button at the top right. Requires Chrome or Edge with Bluetooth.'}</div>
     </div>
+    <div class="card row-between">
+      <div><b>Serve lab</b><div class="hint">Test serve bounce detection and the robot's reaction time.</div></div>
+      <button class="btn small ghost" id="lab">Open</button>
+    </div>
     <div class="card" id="timing"></div>
     <div class="card hint">Nova+ is a personal controller for the Pongbot Nova S Pro, based on olanga/nova and the
       official app's protocol and ball physics. Drills are stored in this browser; use Export to back them up.</div>`;
 
+  $('#lab', view).addEventListener('click', () => ctx.go('#/lab'));
   const len = $('#len', view);
   const paintLen = () => {
     len.innerHTML = '';

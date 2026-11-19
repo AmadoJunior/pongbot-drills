@@ -104,9 +104,11 @@ export function render(view, ctx) {
       { value: 'import', label: 'Import drills…' },
       { value: 'export', label: 'Export all drills (backup)' },
       { value: 'select', label: 'Select drills' },
+      { value: 'lab', label: 'Serve lab (bounce detection test)' },
       { value: 'settings', label: 'Settings' },
     ]);
     if (v === 'select') { selecting = true; paint(); }
+    if (v === 'lab') ctx.go('#/lab');
     if (v === 'settings') ctx.go('#/settings');
     if (v === 'export') download(`nova-drills-${new Date().toISOString().slice(0, 10)}.json`, exportJson(store.drills));
     if (v === 'import') {

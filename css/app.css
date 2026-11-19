@@ -86,6 +86,7 @@ main { padding: 0 14px calc(env(safe-area-inset-bottom) + var(--trace-h, 0px) + 
 .btn { flex: 1; height: 48px; border-radius: 99px; font-weight: 700; font-size: 16px; background: var(--primary); color: #fff; }
 .btn:disabled { background: var(--disabled); }
 .btn.ghost { background: var(--card); color: var(--text); }
+.card .btn.ghost { background: var(--bg); }
 .btn.small { height: 36px; font-size: 14px; flex: none; padding: 0 16px; }
 .btn.danger { background: var(--card); color: var(--danger); }
 
@@ -208,4 +209,21 @@ input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--primary
 .halo-pos button.on { border-color: var(--primary); }
 .halo-pos img { width: 100%; display: block; }
 .halo-pos b { display: block; margin: 4px 4px 0; }
+/* Serve lab */
+.lab-meter { position: relative; height: 10px; border-radius: 5px; background: var(--bg); margin: 10px 0; }
+.lab-meter .lvl { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; background: var(--ok); transition: width .05s linear; }
+.lab-meter .thr { position: absolute; top: -3px; bottom: -3px; left: 50%; width: 2px; background: var(--danger); }
+.lab-light { display: grid; place-content: center; gap: 4px; height: 120px; border-radius: var(--radius); background: var(--bg); color: var(--text-2); text-align: center; transition: background .1s; }
+.lab-light b { font-size: 20px; color: var(--text); }
+.lab-light.hit { background: var(--primary); color: #fff; }
+.lab-light.hit b { color: #fff; }
+.lab-dots { display: flex; justify-content: center; gap: 10px; margin: 10px 0; }
+.lab-dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--line); }
+.lab-dots i.on { background: var(--primary); }
+.lab-log { font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; color: var(--text-2); }
+.lab-log .trig { color: var(--primary); font-weight: 700; }
+.lab-select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+.lab-actions { display: flex; gap: 10px; margin: 12px 0 6px; }
+.lab-trial { padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.5; }
+.lab-sum { font-size: 14px; margin-bottom: 8px; }
 .timing-row { padding: 10px 0; border-top: 1px solid var(--line); margin-top: 10px; font-size: 14px; }

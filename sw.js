@@ -2,7 +2,7 @@
 // load; when the network is slow or missing, the cached copy is used.
 // Every app file is cached at install, so the app opens offline after one
 // visit. tests/pwa.test.mjs checks that APP_FILES lists every app file.
-const CACHE = 'novaplus-v6';
+const CACHE = 'novaplus-v7';
 const NETWORK_TIMEOUT_MS = 3000;
 
 const APP_FILES = [
@@ -14,13 +14,17 @@ const APP_FILES = [
   'js/main.js',
   'js/runner.js',
   'js/store.js',
+  'js/audio/mic.js',
+  'js/audio/onset-worklet.js',
   'js/core/devices.js',
   'js/core/drills.js',
   'js/core/halo.js',
   'js/core/md5.js',
+  'js/core/onset.js',
   'js/core/physics.js',
   'js/core/protocol.js',
   'js/core/scheduler.js',
+  'js/core/serve-detect.js',
   'js/core/timing.js',
   'js/core/variation.js',
   'js/ui/controls.js',
@@ -31,6 +35,7 @@ const APP_FILES = [
   'js/ui/screens/combo.js',
   'js/ui/screens/drills.js',
   'js/ui/screens/head.js',
+  'js/ui/screens/lab.js',
   'js/ui/screens/position.js',
   'js/ui/screens/prep.js',
   'js/ui/screens/serving.js',

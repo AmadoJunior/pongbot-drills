@@ -12,6 +12,7 @@ import * as ballScreen from './ui/screens/ball.js';
 import * as prepScreen from './ui/screens/prep.js';
 import * as servingScreen from './ui/screens/serving.js';
 import * as settingsScreen from './ui/screens/settings.js';
+import * as labScreen from './ui/screens/lab.js';
 
 export const robot = createRobot();
 export const runner = new Runner(robot);
@@ -26,6 +27,7 @@ const routes = [
   [/^#\/prep\/([\w]+)$/, prepScreen, ['id']],
   [/^#\/serving$/, servingScreen],
   [/^#\/settings$/, settingsScreen],
+  [/^#\/lab$/, labScreen],
 ];
 
 let current = null;
