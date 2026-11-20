@@ -222,7 +222,18 @@ export class BleRobot extends RobotBase {
         }
         return;
       }
-      case 'verify': this.#step = 'info'; this.send(CMD.verified1); return;
+      case 'verify': {
+        const msg = parseNotification(bytes);
+        if (msg.type === 'verified' && !msg.ok) {
+          // Carrying on makes the robot drop the link with a GATT error.
+          this.#trace('robot rejected the sign-in (01 08); disconnecting');
+          this.disconnect();
+          return;
+        }
+        this.#step = 'info';
+        this.send(CMD.verified1);
+        return;
+      }
       case 'info': this.#step = 'status'; this.send(CMD.verified2); return;
       case 'status':
         this.#step = 'ready';

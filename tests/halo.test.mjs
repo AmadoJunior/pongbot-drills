@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { haloToRobot, simulateHalo, HALO_POSITIONS } from '../js/core/halo.js';
-import { crc16Modbus, haloFrame, haloUnframe, packBall, drillPacket, parseNotification } from '../js/core/protocol.js';
+import { crc16Modbus, haloFrame, haloUnframe, packBall, drillPacket, parseNotification, authResponse } from '../js/core/protocol.js';
 import { simulateBall, deviceFromName, maxSpinFor } from '../js/core/devices.js';
 import { newDrill, newBall, importText, angleToRot, ROT_ANGLE } from '../js/core/drills.js';
 import { buildCycle } from '../js/core/scheduler.js';
@@ -21,6 +21,36 @@ test('Halo frame layout and round trip', () => {
   const crc = crc16Modbus(f.slice(2, f.length - 2));
   assert.deepEqual([...f.slice(-2)], [crc & 0xff, crc >> 8]);
   assert.deepEqual([...haloUnframe(f)], [...payload]);
+});
+
+// Frames captured from a real Halo S Pro during sign-in (robot -> app).
+const hexBytes = s => Uint8Array.from(s.split(' '), x => parseInt(x, 16));
+const HALO_ACCESS = hexBytes('45 54 1a 00 00 07 14 00 0c 06 4f 35 38 32 34 31 30 30 30 30 30 33 34 67 42 54 43 46 ac d4');
+const HALO_VERIFY_FAIL = hexBytes('45 54 06 00 01 08 00 00 80 43');
+
+test('robot frames use a 45 54 header with the same length and CRC', () => {
+  for (const f of [HALO_ACCESS, HALO_VERIFY_FAIL]) {
+    const crc = crc16Modbus(f.slice(2, -2));
+    assert.deepEqual([...f.slice(-2)], [crc & 0xff, crc >> 8]);
+  }
+  assert.deepEqual([...haloUnframe(HALO_VERIFY_FAIL)], [1, 8, 0, 0]);
+  assert.deepEqual(parseNotification(haloUnframe(HALO_VERIFY_FAIL)), { type: 'verified', ok: false });
+});
+
+test('sign-in challenge from a real Halo parses into serial and code', () => {
+  const payload = haloUnframe(HALO_ACCESS);
+  assert.deepEqual([...payload.slice(0, 2)], [0, 7]);
+  const text = new TextDecoder().decode(payload);
+  assert.equal(text.slice(6, 18), 'O58241000003');
+  assert.equal(text.slice(18), '4gBTCF');
+  const reply = authResponse(text);
+  assert.deepEqual([...reply.slice(0, 3)], [0x08, 0x20, 0]);
+  assert.match(new TextDecoder().decode(reply.slice(3)), /^[0-9a-f]{32}$/);
+});
+
+test('unframe leaves a Nova notification alone even if it starts like a header', () => {
+  const nova = Uint8Array.from([0x45, 0x54, 0x99, 0, 1, 2, 3]);
+  assert.deepEqual([...haloUnframe(nova)], [...nova]);
 });
 
 test('Halo ball record is 56 bytes with fields in official order', () => {

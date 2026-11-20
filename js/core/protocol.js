@@ -113,9 +113,16 @@ export function haloFrame(payload) {
   return Uint8Array.from([...out, crc & 0xff, crc >> 8]);
 }
 
-/** Strips a Halo frame if present. */
+/**
+ * Strips a Halo frame if present. The app sends `41 14 | len | payload | CRC`;
+ * the robot answers with the same layout under a `45 54` ("ET") header
+ * (seen on a real Halo, re/FINDINGS.md round 9). The length field must
+ * match, so an unframed Nova notification is never cut.
+ */
 export function haloUnframe(bytes) {
-  return bytes[0] === 0x41 && bytes[1] === 0x14 && bytes.length >= 6 ? bytes.slice(4, bytes.length - 2) : bytes;
+  const header = (bytes[0] === 0x41 && bytes[1] === 0x14) || (bytes[0] === 0x45 && bytes[1] === 0x54);
+  const framed = header && bytes.length >= 6 && (bytes[2] | (bytes[3] << 8)) === bytes.length - 4;
+  return framed ? bytes.slice(4, bytes.length - 2) : bytes;
 }
 
 export const HALO_CHUNK = 252;
